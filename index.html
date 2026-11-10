@@ -124,7 +124,7 @@ const configured=!placeholder(CFG.apiKey)&&!placeholder(CFG.projectId)&&!placeho
 
 /* ============================ state ============================ */
 const S={user:null,authReady:false,me:undefined,svc:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine};
-const ui={tab:"",sid:null,date:today,per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false};
+const ui={tab:"",sid:null,date:today,per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:""};
 try{ui.sid=localStorage.getItem("servants_fb_sid")}catch(e){}
 const subs={};
 let deferredInstall=null,lastTab="",msgTimer=0,raf=0;
@@ -327,6 +327,7 @@ function usrView(){
   ui._ulist=list;
   const base=location.origin+location.pathname.replace(/index\.html$/,"");
   return `<div class="card"><h2>رابط التطبيق</h2><div class="mut">أرسل هذا الرابط للمستخدمين. بعد إضافة بريد المستخدم هنا يدخل به بحساب Google.</div><code class="ltr">${esc(base)}</code></div>
+  ${impView()}
   <div class="card"><h2>إضافة مستخدم</h2>${userForm({screens:{rec:true,rep:true},services:[],active:true},"new",true)}</div>
   <div class="card"><h2>المستخدمون (${list.length})</h2>${list.length?list.map((u,i)=>userForm(u,i,false)).join(""):'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>`;
 }
@@ -436,6 +437,76 @@ async function saveFile(blob,name){
   setTimeout(()=>URL.revokeObjectURL(a.href),8000);
 }
 
+
+/* ============================ bulk import of users ============================ */
+const SCR_ALIAS={"المتابعة":"rec","متابعة":"rec","rec":"rec","التقارير":"rep","تقارير":"rep","rep":"rep","الخدمات والخدام":"srv","الخدمات":"srv","الخدام":"srv","srv":"srv"};
+const IMP_HEAD=["Gmail","الاسم","مدير؟ (نعم/لا)","الشاشات","الخدمات"];
+function csvLine(l){const o=[];let c="",q=false;for(let i=0;i<l.length;i++){const ch=l[i];
+  if(q){if(ch==='"'){if(l[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}
+  else if(ch==='"')q=true;else if(ch===","){o.push(c);c=""}else c+=ch}
+  o.push(c);return o}
+function parseTable(text){
+  return String(text||"").replace(/^﻿/,"").split(/\r?\n/).filter(l=>l.trim()).map(l=>(l.includes("\t")?l.split("\t"):csvLine(l)).map(x=>x.trim()));
+}
+const splitList=v=>String(v||"").split(/[,،;؛|\n]+/).map(x=>x.trim()).filter(Boolean);
+function analyzeImport(text){
+  let rows=parseTable(text);
+  if(rows.length&&!String(rows[0][0]||"").includes("@"))rows=rows.slice(1);
+  const byName={};Object.values(S.svc).forEach(x=>byName[x.name.trim()]=x.id);
+  const seen=new Set();
+  return rows.map((r,i)=>{
+    const o={n:i+1,email:String(r[0]||"").trim().toLowerCase(),name:r[1]||"",role:/^(نعم|yes|y|1|true|مدير|admin)$/i.test(r[2]||"")?"admin":"user",screens:{},services:[],svcNames:[],status:"new",msg:""};
+    const errs=[];
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(o.email))errs.push("بريد غير صحيح");
+    else if(o.email===ADMIN)errs.push("حساب المدير لا يُعدَّل من هنا");
+    else if(seen.has(o.email))errs.push("بريد مكرر في الملف");
+    seen.add(o.email);
+    const sc=splitList(r[3]);
+    if(!sc.length)o.screens={rec:true};
+    else if(sc.some(x=>/^(الكل|all)$/i.test(x)))o.screens={rec:true,rep:true,srv:true};
+    else sc.forEach(x=>{const k=SCR_ALIAS[x];if(k)o.screens[k]=true;else errs.push("شاشة غير معروفة: "+x)});
+    const sv=splitList(r[4]);
+    if(sv.some(x=>/^(الكل|all)$/i.test(x))){o.services=Object.keys(S.svc);o.svcNames=["الكل"]}
+    else sv.forEach(x=>{const id=byName[x];if(id){o.services.push(id);o.svcNames.push(x)}else errs.push("خدمة غير موجودة: "+x)});
+    if(errs.length){o.status="err";o.msg=errs.join("، ")}
+    else if(S.users[o.email])o.status="upd";
+    return o;
+  });
+}
+async function readImpFile(f){
+  if(!f)return;
+  try{
+    if(/\.xlsx$/i.test(f.name)){
+      if(!window.ExcelJS)throw new Error("مكتبة الإكسيل غير محمّلة");
+      const wb=new ExcelJS.Workbook();await wb.xlsx.load(await f.arrayBuffer());
+      const ws=wb.worksheets[0];const lines=[];
+      ws.eachRow({includeEmpty:false},row=>{const a=[];for(let c=1;c<=5;c++)a.push(String(row.getCell(c).text||"").replace(/[\t\r\n]+/g," "));lines.push(a.join("\t"))});
+      ui.impText=lines.join("\n");
+    }else ui.impText=await f.text();
+    ui.imp=analyzeImport(ui.impText);
+  }catch(x){ui.imp=null;flash("تعذرت قراءة الملف: "+((x&&x.message)||"خطأ"));return}
+  render();
+}
+async function impTemplate(){
+  if(!window.ExcelJS)throw new Error("مكتبة الإكسيل غير محمّلة");
+  const wb=new ExcelJS.Workbook(),used=new Set();
+  const names=svcList().map(x=>x.name);
+  addSheet(wb,used,"المستخدمون",[IMP_HEAD,["example1@gmail.com","مثال: مينا جرجس","لا","المتابعة، التقارير",names[0]||"اسم الخدمة"],["example2@gmail.com","مثال: مريم سمير","نعم","الكل","الكل"]],[30,24,16,28,28]);
+  const buf=await wb.xlsx.writeBuffer();
+  await saveFile(new Blob([buf],{type:XLSX_MIME}),"servants-users-template.xlsx");
+}
+function impView(){
+  const rows=ui.imp,ok=rows?rows.filter(r=>r.status!=="err"):[];
+  const stT={new:"جديد",upd:"تحديث",err:"خطأ"};
+  const scT=o=>o.role==="admin"?"مدير":SCREENS.filter(([k])=>o.screens[k]).map(x=>x[1]).join("، ");
+  return `<div class="card"><h2>استيراد مستخدمين دفعة واحدة</h2>
+  <div class="mut">الصق صفوفاً منسوخة من إكسيل (كل مستخدم في سطر)، أو اختر ملف إكسيل أو CSV. الأعمدة بالترتيب: <b>Gmail | الاسم | مدير؟ (نعم/لا) | الشاشات | الخدمات</b>. الشاشات: المتابعة، التقارير، الخدمات والخدام (أو «الكل»). الخدمات بأسمائها كما هي مكتوبة في التطبيق (أو «الكل»)، وافصل بين أكثر من واحد بفاصلة. إن تُركت الشاشات فارغة تُعطى «المتابعة» فقط. أنشئ الخدمات أولاً.</div>
+  <div class="bar"><button data-a="imptpl">تحميل قالب إكسيل</button><input type="file" id="impfile" accept=".xlsx,.csv,.txt" aria-label="ملف الاستيراد"></div>
+  <textarea id="imptxt" placeholder="example@gmail.com&#9;مينا جرجس&#9;لا&#9;المتابعة، التقارير&#9;فصل 1" aria-label="صفوف المستخدمين" dir="auto">${esc(ui.impText||"")}</textarea>
+  <div class="bar"><button data-a="impprev">معاينة</button>${rows?`<button class="pri" data-a="impgo"${ok.length?"":" disabled"}>استيراد ${ok.length} مستخدم</button>`:""}</div>
+  ${rows?(rows.length?`<div class="sc"><table><thead><tr><th>#</th><th>Gmail</th><th>الاسم</th><th>الصلاحية</th><th>الخدمات</th><th>الحالة</th></tr></thead><tbody>${rows.map(o=>`<tr><td>${o.n}</td><td dir="ltr">${esc(o.email)}</td><td>${esc(o.name)}</td><td>${esc(scT(o))}</td><td>${esc(o.role==="admin"?"الكل":o.svcNames.join("، "))}</td><td class="${o.status==="err"?"r-b":o.status==="upd"?"r-m":"r-g"}">${stT[o.status]}${o.msg?": "+esc(o.msg):""}</td></tr>`).join("")}</tbody></table></div><div class="mut">«تحديث» تعني أن البريد مسجَّل من قبل وستُستبدل صلاحياته بما في الجدول. الصفوف الخاطئة لا تُستورد.</div>`:'<div class="empty">لا توجد صفوف.</div>'):""}</div>`;
+}
+
 /* ============================ events ============================ */
 const wpath=(sid,d)=>"services/"+sid+"/weeks/"+d;
 function writeCell(sid,d,vid,i,val){FB.set(wpath(sid,d),{cells:{[cellKey(vid,i)]:val}},true).catch(failMsg)}
@@ -479,11 +550,19 @@ $app.addEventListener("click",async e=>{
     if(a==="uadd")render();
     return;
   }
+  else if(a==="impprev"){ui.impText=($app.querySelector("#imptxt")||{}).value||ui.impText;ui.imp=analyzeImport(ui.impText)}
+  else if(a==="imptpl"){try{await impTemplate()}catch(x){flash("تعذر إنشاء القالب: "+((x&&x.message)||"خطأ"))}return}
+  else if(a==="impgo"){
+    const good=(ui.imp||[]).filter(r=>r.status!=="err");
+    good.forEach(o=>{const old=S.users[o.email];FB.set("users/"+o.email,{email:o.email,name:o.name,role:o.role,active:old?old.active!==false:true,screens:o.screens,services:o.services}).catch(failMsg)});
+    ui.imp=null;ui.impText="";flash("تم استيراد "+good.length+" مستخدم");return}
   else if(a==="inst"){if(deferredInstall){deferredInstall.prompt();try{await deferredInstall.userChoice}catch(x){}deferredInstall=null}}
   render();
 });
 $app.addEventListener("change",e=>{
   const t=e.target,a=t.dataset.a;
+  if(t.id==="impfile"){readImpFile(t.files&&t.files[0]);return}
+  if(t.id==="imptxt"){ui.impText=t.value;return}
   if(t.dataset.uf)return;
   if(t.id==="sv"){ui.sid=t.value;try{localStorage.setItem("servants_fb_sid",t.value)}catch(x){}}
   else if(t.id==="dt"){if(t.value)ui.date=t.value}
@@ -494,6 +573,7 @@ $app.addEventListener("change",e=>{
   else return;
   render();
 });
+$app.addEventListener("input",e=>{if(e.target.id==="imptxt")ui.impText=e.target.value});
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstall=e;paint()});
 window.addEventListener("appinstalled",()=>{deferredInstall=null;paint()});
 window.addEventListener("online",()=>{S.online=true;paint()});
