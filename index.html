@@ -15,55 +15,58 @@
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@600&display=swap">
 <style>
-/* Layout: one working column. Header (title, service picker, sync chip), three tabs (follow-up grid, reports, admin). */
+/* Layout: one working column. Header (title, service picker, status chip), tabs limited to what the user may open. */
 :root{
   color-scheme:light;
   --bg:#f3f5f6;--card:#ffffff;--fg:#17222b;--mut:#5d6b76;--line:#d5dce1;--head:#e9eef1;
   --accent:#1c5b63;--on-accent:#ffffff;
-  --ok-bg:#cfeadb;--ok-fg:#0d5230;--no-bg:#f6d3d6;--no-fg:#8a1b2b;--ex-bg:#f7e5b4;--ex-fg:#6d5100;
+  --ok-bg:#cfeadb;--ok-fg:#0d5230;--no-bg:#f6d3d6;--no-fg:#8a1b2b;--ex-bg:#f7e5b4;--ex-fg:#6d5100;--tel-bg:#d6e6f7;--tel-fg:#164a7a;
   --font-body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;--font-display:"Reem Kufi","IBM Plex Sans Arabic",Tahoma,sans-serif;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   color-scheme:dark;
   --bg:#10171c;--card:#182229;--fg:#e6edf1;--mut:#9aabb6;--line:#2c3a44;--head:#1f2c34;
   --accent:#6fbcc4;--on-accent:#0a1418;
-  --ok-bg:#1d4a33;--ok-fg:#b9efd2;--no-bg:#56252d;--no-fg:#ffc9d0;--ex-bg:#554415;--ex-fg:#ffe7a3}}
+  --ok-bg:#1d4a33;--ok-fg:#b9efd2;--no-bg:#56252d;--no-fg:#ffc9d0;--ex-bg:#554415;--ex-fg:#ffe7a3;--tel-bg:#1e3a55;--tel-fg:#bcdcf7}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.55;
   padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-bottom,0px));
   padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
 .wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.narrow{max-width:520px}
 .hd{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .hd h1{font:600 24px/1.2 var(--font-display);margin:0;color:var(--accent)}
 .hd select{flex:1;min-width:140px}
-.tabs{display:flex;gap:6px}
-.tabs button{flex:1}
+.tabs{display:flex;gap:6px;overflow-x:auto}
+.tabs button{flex:1 0 auto;white-space:nowrap}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
 button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 11px;min-height:42px}
+input[type=checkbox]{min-height:0;width:20px;height:20px;padding:0;accent-color:var(--accent)}
 button{cursor:pointer}
 button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 button.on,button.pri{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
 button.dng{color:var(--no-fg);border-color:var(--no-fg)}
 button:disabled{opacity:.5;cursor:not-allowed}
-.chip{min-height:34px;padding:4px 12px;border-radius:999px;font-size:13px;white-space:nowrap}
-.chip.off{color:var(--mut)}.chip.ok{background:var(--ok-bg);color:var(--ok-fg);border-color:transparent}
-.chip.warn,.chip.busy{background:var(--ex-bg);color:var(--ex-fg);border-color:transparent}.chip.err{background:var(--no-bg);color:var(--no-fg);border-color:transparent}
+.chip{min-height:34px;padding:4px 12px;border-radius:999px;font-size:13px;white-space:nowrap;cursor:default}
+.chip.ok{background:var(--ok-bg);color:var(--ok-fg);border-color:transparent}
+.chip.warn{background:var(--ex-bg);color:var(--ex-fg);border-color:transparent}.chip.err{background:var(--no-bg);color:var(--no-fg);border-color:transparent}
 .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .sp{flex:1}
 .sc{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{border-collapse:collapse;width:100%;min-width:660px}
+table{border-collapse:collapse;width:100%;min-width:520px}
 th,td{border:1px solid var(--line);padding:5px 6px;text-align:center;font-size:14px;font-variant-numeric:tabular-nums}
 th{background:var(--head);font-size:13px;font-weight:600}
 th[data-a]{cursor:pointer}
-td.nm,th.nm{text-align:right;position:sticky;right:0;background:var(--card);min-width:120px;font-weight:600}
+td.nm,th.nm{text-align:right;position:sticky;right:0;background:var(--card);min-width:110px;font-weight:600}
 th.nm{background:var(--head)}
 td.nm[data-a]{cursor:pointer}
 td.c{padding:2px}
-td.c button{width:100%;min-width:46px;min-height:40px;padding:6px 2px;font-weight:700;border-radius:6px;border-color:transparent;background:transparent}
-td.c button.c1{background:var(--ok-bg);color:var(--ok-fg)}
-td.c button.c2{background:var(--no-bg);color:var(--no-fg)}
-td.c button.c3{background:var(--ex-bg);color:var(--ex-fg)}
+td.c button{width:100%;min-width:56px;min-height:42px;padding:6px 2px;font-weight:700;border-radius:6px;border-color:transparent;background:transparent;font-size:13px}
+td.c button.ok{background:var(--ok-bg);color:var(--ok-fg)}
+td.c button.no{background:var(--no-bg);color:var(--no-fg)}
+td.c button.ex{background:var(--ex-bg);color:var(--ex-fg)}
+td.c button.tel{background:var(--tel-bg);color:var(--tel-fg)}
 td.r-g{background:var(--ok-bg);color:var(--ok-fg)}td.r-m{background:var(--ex-bg);color:var(--ex-fg)}td.r-b{background:var(--no-bg);color:var(--no-fg)}
 tfoot td{background:var(--head);font-weight:700}
 .mut{color:var(--mut);font-size:13px}
@@ -72,116 +75,87 @@ tfoot td{background:var(--head);font-weight:700}
 .row input{flex:1;min-width:0}
 textarea{width:100%;min-height:90px}
 h2{font-size:16px;margin:0}
+h3{font-size:14px;margin:4px 0 0;color:var(--mut);font-weight:600}
 .msg{background:var(--accent);color:var(--on-accent);padding:8px 12px;border-radius:8px;text-align:center}
 .warn{background:var(--ex-bg);color:var(--ex-fg);padding:8px 12px;border-radius:8px}
+.chk{display:flex;gap:8px;align-items:center;padding:3px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:4px 12px}
+.ucard{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.badge{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--head);color:var(--mut)}
 code.ltr{direction:ltr;unicode-bidi:isolate;display:block;padding:8px 10px;background:var(--head);border-radius:8px;overflow-wrap:anywhere;font-size:13px;text-align:left}
+.big{font-size:17px;min-height:52px}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <noscript>يحتاج هذا التطبيق إلى تفعيل JavaScript.</noscript>
+<script src="firebase-config.js"></script>
 <script src="exceljs.min.js"></script>
+<script src="firebase-bundle.js"></script>
 <script>
 "use strict";
-/* ============================ constants & state ============================ */
-const ITEMS=["حضور القداس","الصلاة","القراءة في الكتاب المقدس","تحضير الدرس","حضور الخدمة","المشاركة في الخدمة","حضور اجتماع الخدام"];
-const SYM=["","✔","✘","عذر"];
-const KEY="servants_pwa_data_v1",CFGKEY="servants_pwa_cfg_v1",TOKKEY="servants_pwa_tok";
-const FILE_NAME="servants-followup-data.json";
-const SCOPE="https://www.googleapis.com/auth/drive.file";
-const XLSX_MIME="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/* ============================ constants ============================ */
+/* حالات كل بند: 0 فارغ، 1، 2، 3. w = وزن الحالة في النسبة (null = عذر لا يُحسب) */
+const ITEMS=[
+  {n:"حضور القداس",sym:["","✔","✘","عذر"],w:[0,1,0,null]},
+  {n:"إفتقاد",sym:["","تليفون","زيارة","X"],w:[0,.5,1,0]},
+  {n:"تحضير",sym:["","✔","✘","عذر"],w:[0,1,0,null]},
+  {n:"حضور الخدمة",sym:["","✔","✘","عذر"],w:[0,1,0,null]},
+  {n:"حضور إجتماع الخدام",sym:["","✔","✘","عذر"],w:[0,1,0,null]}
+];
+const NI=ITEMS.length;
+const stCls=(i,s)=>!s?"":i===1?["","tel","ok","no"][s]:["","ok","no","ex"][s];
+const SCREENS=[["rec","المتابعة"],["rep","التقارير"],["srv","الخدمات والخدام"]];
 const $app=document.getElementById("app");
 const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-3);
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const pad=n=>String(n).padStart(2,"0");
 const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return iso(d)};
-const hm=t=>{const d=new Date(t);return pad(d.getHours())+":"+pad(d.getMinutes())};
-const now=()=>Date.now();
 const today=iso(new Date());
 const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const isStandalone=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+const XLSX_MIME="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/* data: services, servants and cells are separate maps so edits from two devices merge per item.
-   D.svc[id]={id,name,order,t,del?}  D.srv[id]={id,sid,name,order,t,del?}  D.cells["servantId|date"]={r:"1000000",t} */
-const emptyData=()=>({v:1,svc:{},srv:{},cells:{}});
-function loadData(){try{const o=JSON.parse(localStorage.getItem(KEY));if(o&&o.svc&&o.srv&&o.cells)return o}catch(e){}return emptyData()}
-function loadCfg(){let c={};try{c=JSON.parse(localStorage.getItem(CFGKEY))||{}}catch(e){}return Object.assign({cid:"",connected:false,fileId:"",last:0,dirty:false,seq:0},c)}
-let D=loadData(),cfg=loadCfg();
-const saveCfg=()=>{try{localStorage.setItem(CFGKEY,JSON.stringify(cfg))}catch(e){}};
-let storageWarned=false;
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){if(!storageWarned){storageWarned=true;flash("تعذر الحفظ على هذا الجهاز، قد تكون المساحة ممتلئة")}}}
-const ui={tab:"rec",sid:null,date:today,per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:""};
-try{ui.sid=localStorage.getItem("servants_pwa_sid")}catch(e){}
-const sync={busy:false,err:"",timer:0};
-let deferredInstall=null,lastTab="",msgTimer=0;
+const CFG=window.FIREBASE_CONFIG||{};
+const ADMIN=String(window.APP_ADMIN_EMAIL||"").trim().toLowerCase();
+const placeholder=v=>!v||/PASTE/i.test(String(v));
+const configured=!placeholder(CFG.apiKey)&&!placeholder(CFG.projectId)&&!placeholder(CFG.appId)&&!placeholder(ADMIN)&&!!window.FB;
 
-const svcList=()=>Object.values(D.svc).filter(x=>!x.del).sort((a,b)=>(a.order||0)-(b.order||0));
-const servants=sid=>Object.values(D.srv).filter(x=>x.sid===sid&&!x.del).sort((a,b)=>(a.order||0)-(b.order||0));
+/* ============================ state ============================ */
+const S={user:null,authReady:false,me:undefined,svc:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine};
+const ui={tab:"",sid:null,date:today,per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false};
+try{ui.sid=localStorage.getItem("servants_fb_sid")}catch(e){}
+const subs={};
+let deferredInstall=null,lastTab="",msgTimer=0,raf=0;
+
+const isOwner=()=>!!S.user&&!!ADMIN&&S.user.email===ADMIN;
+const isAdmin=()=>!!S.user&&(isOwner()||!!(S.me&&S.me.active!==false&&S.me.role==="admin"));
+const isActive=()=>isOwner()||!!(S.me&&S.me.active!==false);
+const can=sc=>isAdmin()||!!(isActive()&&S.me&&S.me.screens&&S.me.screens[sc]);
+const mySvcIds=()=>isAdmin()?Object.keys(S.svc):((S.me&&S.me.services)||[]).filter(id=>S.svc[id]);
+const svcList=()=>mySvcIds().map(id=>S.svc[id]).sort((a,b)=>(a.order||0)-(b.order||0));
 const cur=()=>{const l=svcList();return l.find(x=>x.id===ui.sid)||l[0]||null};
-const getRow=(vid,d)=>(D.cells[vid+"|"+d]||{}).r||"0000000";
-const splitKey=k=>{const i=k.indexOf("|");return[k.slice(0,i),k.slice(i+1)]};
-
-/* ============================ mutations ============================ */
-function touch(){persist();cfg.dirty=true;cfg.seq=(cfg.seq||0)+1;saveCfg();paintChip();scheduleSync()}
-function putSvc(x){D.svc[x.id]=Object.assign({},x,{t:now()});touch()}
-function putSrv(x){D.srv[x.id]=Object.assign({},x,{t:now()});touch()}
-function setRow(vid,d,str){
-  const k=vid+"|"+d,old=D.cells[k],ot=old?cellTs(old):Array(7).fill(0),t=now();
-  const prev=old?old.r:"0000000",ts=[...str].map((c,j)=>c!==prev[j]?t:ot[j]);
-  D.cells[k]={r:str,ts,t:Math.max(...ts)};touch();
-}
-function removeService(id){
-  const t=now();D.svc[id]=Object.assign({},D.svc[id],{del:true,t});
-  Object.values(D.srv).filter(s=>s.sid===id&&!s.del).forEach(s=>{D.srv[s.id]=Object.assign({},s,{del:true,t});purgeCells(s.id)});
-  touch();
-}
-function removeServant(id){D.srv[id]=Object.assign({},D.srv[id],{del:true,t:now()});purgeCells(id);touch()}
-function purgeCells(vid){for(const k in D.cells)if(k.startsWith(vid+"|"))delete D.cells[k]}
-
-/* ============================ merge ============================ */
-function validShape(o){return o&&typeof o==="object"&&o.svc&&o.srv&&o.cells}
-const cellTs=c=>c.ts&&c.ts.length===7?c.ts:Array(7).fill(c.t||0);
-function mergeCell(x,y){
-  const xt=cellTs(x),yt=cellTs(y);let r="";const ts=[];
-  for(let j=0;j<7;j++){if((yt[j]||0)>(xt[j]||0)){r+=y.r[j];ts.push(yt[j])}else{r+=x.r[j];ts.push(xt[j]||0)}}
-  return{r,ts,t:Math.max(...ts)};
-}
-function merge(a,b){
-  const out=emptyData();
-  for(const k of ["svc","srv","cells"]){
-    const x=a[k]||{},y=(b&&b[k])||{};
-    for(const id in x)out[k][id]=x[id];
-    for(const id in y){
-      const o=out[k][id];
-      if(!o)out[k][id]=y[id];
-      else if(k==="cells")out[k][id]=mergeCell(o,y[id]);
-      else if((y[id].t||0)>(o.t||0))out[k][id]=y[id];
-    }
-  }
-  for(const key in out.cells){const vid=splitKey(key)[0],s=out.srv[vid];if(!s||s.del||!out.svc[s.sid]||out.svc[s.sid].del)delete out.cells[key]}
-  return out;
-}
-function hasNewer(a,b){
-  for(const k of ["svc","srv","cells"])for(const id in a[k]){
-    const x=a[k][id],o=(b[k]||{})[id];
-    if(!o)return true;
-    if(k==="cells"){const xt=cellTs(x),ot=cellTs(o);for(let j=0;j<7;j++)if((xt[j]||0)>(ot[j]||0)||(xt[j]===ot[j]&&x.r[j]!==o.r[j]))return true}
-    else if((x.t||0)>(o.t||0))return true;
-  }
-  return false;
-}
+const servants=sid=>Object.values(S.srv).filter(x=>x.sid===sid).sort((a,b)=>(a.order||0)-(b.order||0));
+const tabsAllowed=()=>{const t=[];if(can("rec"))t.push(["rec","المتابعة"]);if(can("rep"))t.push(["rep","التقارير"]);if(can("srv"))t.push(["srv","الخدمات والخدام"]);if(isAdmin())t.push(["usr","المستخدمون"]);t.push(["acc","حسابي"]);return t};
+const cellKey=(vid,i)=>vid+"_"+i;
+const getState=(sid,date,vid,i)=>{const w=S.weeks[sid+"|"+date];return(w&&w.cells&&w.cells[cellKey(vid,i)])||0};
 
 /* ============================ statistics ============================ */
 function stats(sid,test){
   const sv=servants(sid),by={};
-  sv.forEach(s=>by[s.id]={sv:s,c:Array(7).fill(0),ok:0,ex:0,rc:0,p:null});
-  for(const k in D.cells){
-    const[vid,d]=splitKey(k),o=by[vid];if(!o||!test(d))continue;
-    const row=D.cells[k].r;
-    for(let j=0;j<7;j++){const x=row[j];if(!x||x==="0")continue;o.rc++;if(x==="1"){o.ok++;o.c[j]++}else if(x==="3")o.ex++}
+  sv.forEach(s=>by[s.id]={sv:s,cnt:ITEMS.map(()=>[0,0,0,0]),score:0,rec:0,ex:0,p:null});
+  for(const k in S.weeks){
+    const w=S.weeks[k];if(w.sid!==sid||!test(w.date))continue;
+    for(const ck in (w.cells||{})){
+      const u=ck.lastIndexOf("_"),vid=ck.slice(0,u),i=+ck.slice(u+1),st=+w.cells[ck],o=by[vid];
+      if(!o||!ITEMS[i]||!st)continue;
+      o.cnt[i][st]++;
+      const wt=ITEMS[i].w[st];
+      if(wt===null)o.ex++;else{o.rec++;o.score+=wt}
+    }
   }
-  return sv.map(s=>{const o=by[s.id],den=o.rc-o.ex;o.p=den>0?o.ok/den:null;return o});
+  return sv.map(s=>{const o=by[s.id];o.p=o.rec>0?o.score/o.rec:null;return o});
 }
 const rate=p=>p==null?"":p>=.9?"ممتاز":p>=.75?"جيد جداً":p>=.5?"جيد":"يحتاج إلى متابعة";
 const rcls=p=>p==null?"":p>=.75?"g":p>=.5?"m":"b";
@@ -189,44 +163,110 @@ const pc=p=>p==null?"":Math.round(p*100)+"%";
 const avg=a=>{const x=a.filter(v=>v!=null);return x.length?x.reduce((s,v)=>s+v,0)/x.length:null};
 const testFn=()=>ui.per==="month"?d=>d.startsWith(ui.month):ui.per==="year"?d=>d.startsWith(ui.year):()=>true;
 const periodLabel=()=>ui.per==="month"?ui.month:ui.per==="year"?ui.year:"الكل";
+function rowOf(o){const c=o.cnt;return[o.sv.name,c[0][1],c[1][1],c[1][2],c[2][1],c[3][1],c[4][1],o.rec,o.ex,o.p,rate(o.p)]}
+const REPORT_HEAD=["الخادم","حضور القداس","إفتقاد (تليفون)","إفتقاد (زيارة)","تحضير","حضور الخدمة","حضور إجتماع الخدام","البنود المسجّلة","أيام العذر","النسبة","التقدير"];
+function totalRow(st){
+  const sum=f=>st.reduce((s,o)=>s+f(o),0),p=avg(st.map(o=>o.p));
+  return["المتوسط",sum(o=>o.cnt[0][1]),sum(o=>o.cnt[1][1]),sum(o=>o.cnt[1][2]),sum(o=>o.cnt[2][1]),sum(o=>o.cnt[3][1]),sum(o=>o.cnt[4][1]),sum(o=>o.rec),sum(o=>o.ex),p,rate(p)];
+}
+
+/* ============================ data subscriptions ============================ */
+const dbErr=e=>{S.err=(e&&e.code==="permission-denied")?"رفضت قاعدة البيانات الطلب. تأكد من نشر قواعد Firestore ومن تسجيل بريدك لدى المدير.":"تعذر الاتصال بقاعدة البيانات"+(e&&e.code?" ("+e.code+")":"");paint()};
+const setPend=(k,m)=>{S.pend[k]=!!(m&&m.pending)};
+function unsubAll(){for(const k in subs){try{subs[k]()}catch(e){}delete subs[k]}}
+function reconcile(){
+  if(!S.user||!isActive())return;
+  const want=new Set(["me"]);
+  const add=(k,fn)=>{want.add(k);if(!subs[k])subs[k]=fn()};
+  if(isAdmin()){
+    add("svcs",()=>FB.watchCol("services",(list,m)=>{
+      setPend("svcs",m);const seen={};
+      list.forEach(d=>{seen[d.id]=1;S.svc[d.id]={id:d.id,name:d.name||"",order:d.order||0}});
+      Object.keys(S.svc).forEach(id=>{if(!seen[id])dropService(id)});
+      S.err="";reconcile();paint();
+    },dbErr));
+    add("users",()=>FB.watchCol("users",(list,m)=>{setPend("users",m);S.users={};list.forEach(d=>S.users[d.id]=d);paint()},dbErr));
+  }
+  for(const sid of (isAdmin()?Object.keys(S.svc):((S.me&&S.me.services)||[]))){
+    if(!isAdmin())add("svc:"+sid,()=>FB.watchDoc("services/"+sid,(d,m)=>{setPend("svc:"+sid,m);if(d)S.svc[sid]={id:sid,name:d.name||"",order:d.order||0};else dropService(sid);S.err="";paint()},dbErr));
+    add("srv:"+sid,()=>FB.watchCol("services/"+sid+"/servants",(list,m)=>{
+      setPend("srv:"+sid,m);
+      for(const k in S.srv)if(S.srv[k].sid===sid)delete S.srv[k];
+      list.forEach(d=>S.srv[d.id]={id:d.id,sid,name:d.name||"",order:d.order||0});paint();
+    },dbErr));
+    if(can("rec")||can("rep"))add("wk:"+sid,()=>FB.watchCol("services/"+sid+"/weeks",(list,m)=>{
+      setPend("wk:"+sid,m);
+      for(const k in S.weeks)if(S.weeks[k].sid===sid)delete S.weeks[k];
+      list.forEach(d=>S.weeks[sid+"|"+d.id]={sid,date:d.id,cells:d.cells||{}});paint();
+    },dbErr));
+  }
+  for(const k of Object.keys(subs))if(!want.has(k)){subs[k]();delete subs[k];delete S.pend[k];const p=k.split(":");if(p[0]==="srv")for(const x in S.srv)if(S.srv[x].sid===p[1])delete S.srv[x];if(p[0]==="wk")for(const x in S.weeks)if(S.weeks[x].sid===p[1])delete S.weeks[x];if(p[0]==="svc")delete S.svc[p[1]]}
+}
+function dropService(id){
+  delete S.svc[id];
+  for(const k in S.srv)if(S.srv[k].sid===id)delete S.srv[k];
+  for(const k in S.weeks)if(S.weeks[k].sid===id)delete S.weeks[k];
+}
+function startSession(){
+  unsubAll();S.me=undefined;S.svc={};S.srv={};S.weeks={};S.users={};S.err="";S.pend={};
+  subs.me=FB.watchDoc("users/"+S.user.email,(d,m)=>{
+    setPend("me",m);const first=S.me===undefined;S.me=d;
+    if(!d&&isOwner()&&first&&!S.bootstrapped){
+      S.bootstrapped=true;
+      FB.set("users/"+S.user.email,{email:S.user.email,name:S.user.name||"المدير",role:"admin",active:true,screens:{rec:true,rep:true,srv:true},services:[]}).catch(dbErr);
+    }
+    S.err="";reconcile();paint();
+  },dbErr);
+}
+function paint(){clearTimeout(raf);raf=setTimeout(softRender,30)}
 
 /* ============================ views ============================ */
-function flash(m){ui.msg=m;render();clearTimeout(msgTimer);msgTimer=setTimeout(()=>{ui.msg="";render()},3200)}
+function flash(m){ui.msg=m;render();clearTimeout(msgTimer);msgTimer=setTimeout(()=>{ui.msg="";render()},3500)}
+const failMsg=e=>flash("تعذر الحفظ: "+((e&&e.code)==="permission-denied"?"لا تملك صلاحية هذا الإجراء":(e&&e.code)||"خطأ"));
 function chipInfo(){
-  if(!cfg.cid||!cfg.connected)return{t:"على الجهاز فقط",c:"off"};
-  if(sync.busy)return{t:"جارٍ المزامنة...",c:"busy"};
-  if(sync.err)return{t:sync.err,c:"err"};
-  if(cfg.dirty)return{t:"بانتظار المزامنة",c:"warn"};
-  return{t:"تمت المزامنة "+hm(cfg.last),c:"ok"};
+  if(!S.online)return{t:"بدون اتصال",c:"warn"};
+  if(S.err)return{t:"تعذر الاتصال",c:"err"};
+  if(Object.values(S.pend).some(Boolean))return{t:"بانتظار المزامنة",c:"warn"};
+  return{t:"متصل",c:"ok"};
 }
-function paintChip(){const e=document.getElementById("chip");if(!e)return;const i=chipInfo();e.textContent=i.t;e.className="chip "+i.c}
-function shell(inner){
-  const l=svcList(),v=cur(),ci=chipInfo();
-  const tabs=[["rec","المتابعة"],["rep","التقارير"],["adm","الإدارة"]];
-  return `<div class="wrap"><div class="hd"><h1>متابعة الخدام</h1>
-    ${l.length?`<select id="sv" aria-label="الخدمة">${l.map(x=>`<option value="${x.id}"${v&&x.id===v.id?" selected":""}>${esc(x.name)}</option>`).join("")}</select>`:'<span class="sp"></span>'}
-    <button class="chip ${ci.c}" id="chip" data-a="chip">${ci.t}</button></div>
-    <div class="tabs">${tabs.map(t=>`<button data-a="tab" data-t="${t[0]}" class="${ui.tab===t[0]?"on":""}">${t[1]}</button>`).join("")}</div>
-    ${ui.msg?`<div class="msg" role="status">${esc(ui.msg)}</div>`:""}
-    ${inner}</div>`;
+function simple(inner,narrow){return `<div class="wrap${narrow?" narrow":""}"><div class="hd"><h1>متابعة الخدام</h1></div>${inner}</div>`}
+function setupView(){
+  return simple(`<div class="card"><h2>الإعداد غير مكتمل</h2>
+  <div class="mut">لم تُدخل بعد إعدادات Firebase. افتح الملف <b>firebase-config.js</b> في مستودع GitHub، واستبدل كل القيم المكتوب بها <b>PASTE</b> بقيمك، ثم احفظ (Commit) وأعد فتح التطبيق مرتين. خطوات الحصول على القيم في ملف الدليل.</div>
+  ${!window.FB?'<div class="warn">ملف firebase-bundle.js غير محمّل. تأكد من رفعه مع باقي الملفات.</div>':""}</div>`,true);
 }
-function firstRun(){
-  return `<div class="card"><h2>ابدأ بإضافة أول خدمة</h2>
-  <div class="mut">الخدمة هي الفصل أو المرحلة، ولكل خدمة خدامها وسجلاتها وتقاريرها. بعد ذلك اربط التطبيق بـ Google Drive من تبويب «الإدارة» ليحفظ بياناتك ويفتحها على أي جهاز.</div>
-  <div class="row"><input id="ns" placeholder="مثال: ثانوي بنين" aria-label="اسم الخدمة"><button class="pri" data-a="as">إضافة الخدمة</button></div></div>`;
+function loginView(){
+  return simple(`<div class="card"><h2>تسجيل الدخول</h2>
+  <div class="mut">ادخل بحساب Google المسجَّل لدى أمين الخدمة. إذا لم يكن بريدك مسجلاً فسيظهر لك ذلك بعد الدخول.</div>
+  ${S.err?`<div class="warn">${esc(S.err)}</div>`:""}
+  ${ui.msg?`<div class="msg" role="status">${esc(ui.msg)}</div>`:""}
+  <button class="pri big" data-a="login"${ui.busy?" disabled":""}>${ui.busy?"جارٍ الدخول...":"تسجيل الدخول بحساب Google"}</button></div>${installCard()}`,true);
+}
+function blockedView(kind){
+  const t=kind==="off"?"تم إيقاف حسابك":"بريدك غير مسجَّل بعد";
+  const d=kind==="off"?"أوقف أمين الخدمة هذا الحساب. تواصل معه إذا كان ذلك بالخطأ.":"سجّلت الدخول، لكن هذا البريد غير مضاف إلى المستخدمين. أرسل البريد التالي لأمين الخدمة ليضيفه، ثم أعد فتح التطبيق.";
+  return simple(`<div class="card"><h2>${t}</h2><div class="mut">${d}</div><code class="ltr">${esc(S.user.email)}</code><div><button data-a="logout">تسجيل الخروج</button></div></div>`,true);
+}
+function installCard(){
+  if(isStandalone())return "";
+  if(deferredInstall)return `<div class="card"><h2>تثبيت التطبيق</h2><div class="mut">ثبّت التطبيق ليظهر بأيقونة على الشاشة الرئيسية.</div><div><button class="pri" data-a="inst">تثبيت التطبيق</button></div></div>`;
+  return `<div class="card"><h2>تثبيت التطبيق</h2><div class="mut">${isIOS?"في Safari: اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».":"في Chrome: افتح القائمة (⋮) ثم «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»."}</div></div>`;
+}
+function stateBtn(i,s,attrs,label){
+  const c=stCls(i,s);return `<button class="${c}" ${attrs} aria-label="${esc(label)}">${ITEMS[i].sym[s]||"&nbsp;"}</button>`;
 }
 function recView(v){
+  if(!v)return `<div class="card empty">لا توجد خدمة مسموح لك بها. تواصل مع أمين الخدمة.</div>`;
   const sv=servants(v.id);
-  if(!sv.length)return `<div class="card empty">لا يوجد خدام في هذه الخدمة بعد. أضفهم من تبويب «الإدارة».</div>`;
+  if(!sv.length)return `<div class="card empty">لا يوجد خدام في هذه الخدمة بعد.${can("srv")?" أضفهم من تبويب «الخدمات والخدام».":""}</div>`;
   const st=stats(v.id,d=>d===ui.date);
   let h=`<div class="card"><div class="bar"><button data-a="d" data-n="-7">الأسبوع السابق</button><input type="date" id="dt" value="${ui.date}" aria-label="تاريخ الأسبوع"><button data-a="d" data-n="7">الأسبوع التالي</button><button data-a="d" data-n="0">اليوم</button></div>
-  <div class="mut">اضغط على الخانة لتتبدل: ✔ ثم ✘ ثم عذر ثم فارغ. اضغط على اسم البند أو اسم الخادم لتحديد الكل ✔.</div>
-  <div class="sc"><table><thead><tr><th class="nm">الخادم</th>${ITEMS.map((x,i)=>`<th data-a="col" data-i="${i}">${x}</th>`).join("")}<th>النسبة</th></tr></thead><tbody>`;
+  <div class="mut">اضغط على الخانة لتتبدل بين الحالات. للقداس والتحضير والخدمة والاجتماع: ✔ ثم ✘ ثم عذر. للإفتقاد: تليفون ثم زيارة ثم X. اضغط اسم البند أو اسم الخادم لتحديد الكل.</div>
+  <div class="sc"><table><thead><tr><th class="nm">الخادم</th>${ITEMS.map((x,i)=>`<th data-a="col" data-i="${i}">${x.n}</th>`).join("")}<th>النسبة</th></tr></thead><tbody>`;
   sv.forEach((s,k)=>{
-    const row=getRow(s.id,ui.date);
-    h+=`<tr><td class="nm" data-a="row" data-s="${s.id}">${esc(s.name)}</td>`+[...row].map((x,i)=>`<td class="c"><button class="c${x}" data-a="c" data-s="${s.id}" data-i="${i}" aria-label="${esc(s.name)} ${ITEMS[i]}">${SYM[+x]||"&nbsp;"}</button></td>`).join("")+`<td>${pc(st[k].p)}</td></tr>`;
+    h+=`<tr><td class="nm" data-a="row" data-s="${s.id}">${esc(s.name)}</td>`+ITEMS.map((_,i)=>`<td class="c">${stateBtn(i,getState(v.id,ui.date,s.id,i),`data-a="c" data-s="${s.id}" data-i="${i}"`,s.name+" "+ITEMS[i].n)}</td>`).join("")+`<td>${pc(st[k].p)}</td></tr>`;
   });
-  h+=`</tbody><tfoot><tr><td class="nm">عدد الملتزمين</td>${ITEMS.map((_,i)=>`<td>${st.reduce((s,x)=>s+x.c[i],0)}</td>`).join("")}<td>${pc(avg(st.map(x=>x.p)))}</td></tr></tfoot></table></div></div>`;
+  h+=`</tbody><tfoot><tr><td class="nm">الملتزمون</td>${ITEMS.map((_,i)=>i===1?`<td>ت ${st.reduce((s,o)=>s+o.cnt[1][1],0)} · ز ${st.reduce((s,o)=>s+o.cnt[1][2],0)}</td>`:`<td>${st.reduce((s,o)=>s+o.cnt[i][1],0)}</td>`).join("")}<td>${pc(avg(st.map(o=>o.p)))}</td></tr></tfoot></table></div></div>`;
   return h;
 }
 function tbl(head,rows,rc){
@@ -239,66 +279,96 @@ function reportData(v){
     const rows=svcList().map(x=>{const p=avg(stats(x.id,t).map(y=>y.p));const r=[x.name,String(servants(x.id).length),pc(p),rate(p)];r.p=p;return r});
     return{head:["الخدمة","عدد الخدام","متوسط الالتزام","التقدير"],rc:3,rows};
   }
+  if(!v)return{head:[],rc:0,rows:[]};
   const st=stats(v.id,t);
-  const rows=st.map(x=>{const r=[x.sv.name,...x.c.map(String),String(x.ok),String(x.ex),pc(x.p),rate(x.p)];r.p=x.p;return r});
-  if(rows.length){const p=avg(st.map(x=>x.p));const r=["المتوسط",...ITEMS.map((_,i)=>String(st.reduce((s,x)=>s+x.c[i],0))),String(st.reduce((s,x)=>s+x.ok,0)),String(st.reduce((s,x)=>s+x.ex,0)),pc(p),rate(p)];r.p=p;rows.push(r)}
-  return{head:["الخادم",...ITEMS,"إجمالي الالتزام","أيام العذر","النسبة","التقدير"],rc:10,rows};
+  const fmt=a=>{const r=a.map((x,i)=>i===9?pc(x):String(x));r.p=a[9];return r};
+  const rows=st.map(o=>fmt(rowOf(o)));
+  if(rows.length)rows.push(fmt(totalRow(st)));
+  return{head:REPORT_HEAD,rc:10,rows};
 }
 function repView(v){
   const rd=reportData(v);
   const per=`<select id="per" aria-label="الفترة"><option value="month"${ui.per==="month"?" selected":""}>شهر</option><option value="year"${ui.per==="year"?" selected":""}>سنة</option><option value="all"${ui.per==="all"?" selected":""}>كل الفترة</option></select>`+(ui.per==="month"?`<input type="month" id="mo" value="${ui.month}">`:ui.per==="year"?`<input type="number" id="yr" value="${ui.year}" style="width:96px">`:"");
-  const drive=cfg.cid&&cfg.connected;
   return `<div class="card"><div class="bar"><select id="scope" aria-label="النطاق"><option value="one"${ui.scope==="one"?" selected":""}>الخدمة الحالية</option><option value="all"${ui.scope==="all"?" selected":""}>مقارنة كل الخدمات</option></select>${per}</div>
-  <div class="bar"><button class="pri" data-a="xl">تحميل تقرير إكسيل</button>${drive?`<button data-a="xd">حفظ التقرير في Drive</button>`:""}</div>
+  <div class="bar"><button class="pri" data-a="xl">تحميل تقرير إكسيل</button></div>
   ${rd.rows.length?tbl(rd.head,rd.rows,rd.rc):'<div class="empty">لا توجد بيانات.</div>'}
-  <div class="mut">النسبة = ✔ ÷ (المسجّل − العذر). التقدير: ممتاز 90% فأكثر، جيد جداً 75%، جيد 50%، وأقل من ذلك يحتاج إلى متابعة. ملف الإكسيل يحتوي الملخص وتفاصيل كل أسبوع، وعند اختيار «مقارنة كل الخدمات» يضم كل الخدمات في ملف واحد.</div></div>`;
+  <div class="mut">النسبة = مجموع النقاط ÷ البنود المسجّلة بدون العذر. نقاط ✔ = 1، ✘ = 0، والإفتقاد: زيارة = 1، تليفون = ½، X = 0. التقدير: ممتاز 90% فأكثر، جيد جداً 75%، جيد 50%، وأقل من ذلك يحتاج إلى متابعة.</div></div>`;
 }
 function delBtn(k,id){return ui.del===k+id?`<button class="dng" data-a="${k}x" data-id="${id}">تأكيد الحذف</button><button data-a="dc">إلغاء</button>`:`<button class="dng" data-a="${k}d" data-id="${id}">حذف</button>`}
-function syncCard(){
-  const on=cfg.cid&&cfg.connected;
-  if(on)return `<div class="card"><h2>المزامنة مع Google Drive</h2>
-    <div class="mut">متصل. تُحفظ البيانات في ملف <b>${FILE_NAME}</b> داخل «My Drive» في حسابك، ويفتحها التطبيق من أي جهاز مرتبط بنفس الحساب ونفس المعرّف.</div>
-    <div class="mut">آخر مزامنة: ${cfg.last?hm(cfg.last):"لم تتم بعد"}. تنتهي صلاحية الدخول كل ساعة تقريباً؛ إذا ظهر «اضغط للمزامنة» اضغط عليه مرة واحدة.</div>
-    <div class="bar"><button class="pri" data-a="sync">مزامنة الآن</button><button class="dng" data-a="disc">قطع الربط</button></div></div>`;
-  return `<div class="card"><h2>المزامنة مع Google Drive</h2>
-    <div class="mut">أنشئ معرّف OAuth من Google Cloud مرة واحدة (الخطوات في ملف الدليل)، ثم الصقه هنا. اكتب هذا العنوان في خانة «Authorized JavaScript origins»:</div>
-    <code class="ltr" id="orig">${esc(location.origin)}</code>
-    <input id="cid" dir="ltr" placeholder="xxxxxxxx.apps.googleusercontent.com" value="${esc(cfg.cid)}" aria-label="Client ID" style="text-align:left">
-    <div class="bar"><button class="pri" data-a="conn">ربط Google Drive</button></div></div>`;
-}
-function installCard(){
-  if(isStandalone())return "";
-  if(deferredInstall)return `<div class="card"><h2>تثبيت التطبيق</h2><div class="mut">ثبّت التطبيق ليظهر بأيقونة على الشاشة الرئيسية ويعمل بدون إنترنت.</div><div><button class="pri" data-a="inst">تثبيت التطبيق</button></div></div>`;
-  return `<div class="card"><h2>تثبيت التطبيق</h2><div class="mut">${isIOS?"في Safari: اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».":"في Chrome: افتح القائمة (⋮) ثم «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»."}</div></div>`;
-}
-function admView(v){
+function srvView(v){
+  const admin=isAdmin();
   const sv=v?servants(v.id):[];
-  return `<div class="card"><h2>الخدمات</h2><div class="mut">لكل خدمة (فصل أو مرحلة) خدامها وسجلاتها وتقاريرها.</div>
+  return `${admin?`<div class="card"><h2>الخدمات</h2><div class="mut">لكل خدمة (فصل أو مرحلة) خدامها وسجلاتها وتقاريرها.</div>
   ${svcList().map(x=>`<div class="row"><input data-a="sn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الخدمة"><button data-a="sel" data-id="${x.id}" class="${v&&x.id===v.id?"on":""}">${v&&x.id===v.id?"الحالية":"اختيار"}</button>${delBtn("s",x.id)}</div>`).join("")}
-  <div class="row"><input id="ns" placeholder="اسم خدمة جديدة" aria-label="اسم خدمة جديدة"><button class="pri" data-a="as">إضافة خدمة</button></div></div>
+  <div class="row"><input id="ns" placeholder="اسم خدمة جديدة" aria-label="اسم خدمة جديدة"><button class="pri" data-a="as">إضافة خدمة</button></div></div>`:""}
   ${v?`<div class="card"><h2>خدام «${esc(v.name)}»</h2>
   ${sv.map(x=>`<div class="row"><input data-a="vn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الخادم">${delBtn("v",x.id)}</div>`).join("")}
-  <div class="mut">إضافة أسماء (اسم في كل سطر):</div><textarea id="nv" placeholder="مينا جرجس&#10;مريم سمير" aria-label="أسماء الخدام"></textarea><div><button class="pri" data-a="av">إضافة الأسماء</button></div></div>`:""}
-  ${syncCard()}
-  <div class="card"><h2>نسخة احتياطية</h2><div class="mut">نزّل نسخة من كل البيانات كملف، أو ادمج نسخة قديمة في البيانات الحالية.</div>
-  <div class="bar"><button data-a="bk">تنزيل نسخة احتياطية</button><button data-a="rs">دمج نسخة احتياطية</button><input type="file" id="rf" accept=".json,application/json" hidden></div></div>
-  ${installCard()}`;
+  <div class="mut">إضافة أسماء (اسم في كل سطر):</div><textarea id="nv" placeholder="مينا جرجس&#10;مريم سمير" aria-label="أسماء الخدام"></textarea><div><button class="pri" data-a="av">إضافة الأسماء</button></div></div>`:`<div class="card empty">${admin?"أضف خدمة أولاً.":"لا توجد خدمة مسموح لك بها."}</div>`}`;
+}
+function userForm(u,idx,isNew){
+  const sc=u.screens||{},sel=new Set(u.services||[]);
+  const locked=!isNew&&u.email===ADMIN;
+  return `<div class="ucard">
+  ${isNew?`<input data-uf="${idx}" data-f="email" dir="ltr" placeholder="البريد الإلكتروني (Gmail) للمستخدم" style="text-align:left" aria-label="البريد الإلكتروني">`:`<div class="bar"><b dir="ltr">${esc(u.email)}</b>${locked?'<span class="badge">مدير النظام</span>':""}</div>`}
+  <input data-uf="${idx}" data-f="name" value="${esc(u.name||"")}" placeholder="الاسم" aria-label="الاسم">
+  <div class="grid">
+    <label class="chk"><input type="checkbox" data-uf="${idx}" data-f="admin"${u.role==="admin"?" checked":""}${locked?" disabled":""}> مدير (يرى كل شيء)</label>
+    <label class="chk"><input type="checkbox" data-uf="${idx}" data-f="active"${u.active!==false?" checked":""}${locked?" disabled":""}> الحساب مفعّل</label>
+  </div>
+  <h3>الشاشات المسموحة</h3>
+  <div class="grid">${SCREENS.map(([k,n])=>`<label class="chk"><input type="checkbox" data-uf="${idx}" data-f="scr" data-k="${k}"${sc[k]?" checked":""}> ${n}</label>`).join("")}</div>
+  <h3>الخدمات المسموحة</h3>
+  <div class="grid">${svcList().map(x=>`<label class="chk"><input type="checkbox" data-uf="${idx}" data-f="svc" data-k="${x.id}"${sel.has(x.id)?" checked":""}> ${esc(x.name)}</label>`).join("")||'<span class="mut">لا توجد خدمات بعد.</span>'}</div>
+  <div class="mut">المدير يرى كل الخدمات والشاشات بغض النظر عن هذه الخيارات.</div>
+  <div class="bar"><button class="pri" data-a="${isNew?"uadd":"usave"}" data-idx="${idx}">${isNew?"إضافة المستخدم":"حفظ"}</button>${isNew||locked?"":delBtn("u",String(idx))}</div></div>`;
+}
+function usrView(){
+  const list=Object.values(S.users).sort((a,b)=>(a.name||a.email).localeCompare(b.name||b.email,"ar"));
+  ui._ulist=list;
+  const base=location.origin+location.pathname.replace(/index\.html$/,"");
+  return `<div class="card"><h2>رابط التطبيق</h2><div class="mut">أرسل هذا الرابط للمستخدمين. بعد إضافة بريد المستخدم هنا يدخل به بحساب Google.</div><code class="ltr">${esc(base)}</code></div>
+  <div class="card"><h2>إضافة مستخدم</h2>${userForm({screens:{rec:true,rep:true},services:[],active:true},"new",true)}</div>
+  <div class="card"><h2>المستخدمون (${list.length})</h2>${list.length?list.map((u,i)=>userForm(u,i,false)).join(""):'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>`;
+}
+function accView(){
+  const names=svcList().map(x=>x.name);
+  return `<div class="card"><h2>حسابي</h2>
+  <div><b>${esc((S.me&&S.me.name)||S.user.name||"")}</b></div><code class="ltr">${esc(S.user.email)}</code>
+  <div class="mut">${isAdmin()?"مدير: يرى كل الخدمات والشاشات.":"الخدمات المسموحة: "+(names.length?esc(names.join("، ")):"لا شيء")}</div>
+  <div><button class="dng" data-a="logout">تسجيل الخروج</button></div></div>${installCard()}`;
+}
+function mainView(){
+  const tabs=tabsAllowed();
+  if(!tabs.some(t=>t[0]===ui.tab))ui.tab=tabs[0][0];
+  const l=svcList(),v=cur(),ci=chipInfo();
+  let body;
+  if(ui.tab==="rec")body=recView(v);else if(ui.tab==="rep")body=repView(v);else if(ui.tab==="srv")body=srvView(v);else if(ui.tab==="usr")body=usrView();else body=accView();
+  return `<div class="wrap"><div class="hd"><h1>متابعة الخدام</h1>
+    ${l.length?`<select id="sv" aria-label="الخدمة">${l.map(x=>`<option value="${x.id}"${v&&x.id===v.id?" selected":""}>${esc(x.name)}</option>`).join("")}</select>`:'<span class="sp"></span>'}
+    <span class="chip ${ci.c}" id="chip">${ci.t}</span></div>
+    <div class="tabs">${tabs.map(t=>`<button data-a="tab" data-t="${t[0]}" class="${ui.tab===t[0]?"on":""}">${t[1]}</button>`).join("")}</div>
+    ${ui.msg?`<div class="msg" role="status">${esc(ui.msg)}</div>`:""}
+    ${S.err?`<div class="warn">${esc(S.err)}</div>`:""}${body}</div>`;
 }
 function render(){
   const keepSc=$app.querySelector(".sc"),sl=keepSc?keepSc.scrollLeft:0,st=keepSc?keepSc.scrollTop:0,wy=window.scrollY;
-  const v=cur();
-  let body;
-  if(!v&&ui.tab!=="adm")body=firstRun();
-  else body=ui.tab==="rec"?recView(v):ui.tab==="rep"?repView(v):admView(v);
-  $app.innerHTML=shell(body);
+  let html;
+  if(!configured)html=setupView();
+  else if(!S.authReady)html=simple('<div class="card empty">جارٍ التحميل...</div>',true);
+  else if(!S.user)html=loginView();
+  else if(S.me===undefined&&!isOwner())html=simple('<div class="card empty">جارٍ تحميل بياناتك...</div>',true);
+  else if(!isOwner()&&!S.me)html=blockedView("none");
+  else if(!isOwner()&&S.me.active===false)html=blockedView("off");
+  else html=mainView();
+  $app.innerHTML=html;
   const sc=$app.querySelector(".sc");if(sc&&lastTab===ui.tab){sc.scrollLeft=sl;sc.scrollTop=st}
   window.scrollTo(0,wy);lastTab=ui.tab;
 }
-function softRender(){const a=document.activeElement;if(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")&&a.closest("#app"))return;render()}
+function softRender(){const a=document.activeElement;if(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"||a.tagName==="SELECT")&&a.closest("#app"))return;render()}
 
 /* ============================ Excel ============================ */
 const NAVY="FF1F3864",BORDER={style:"thin",color:{argb:"FF999999"}};
-const FILLS={"ممتاز":"C6EFCE","جيد جداً":"C6EFCE","جيد":"FFEB9C","يحتاج إلى متابعة":"FFC7CE","✔":"C6EFCE","✘":"FFC7CE","عذر":"FFEB9C"};
+const FILLS={"ممتاز":"C6EFCE","جيد جداً":"C6EFCE","جيد":"FFEB9C","يحتاج إلى متابعة":"FFC7CE","✔":"C6EFCE","✘":"FFC7CE","عذر":"FFEB9C","زيارة":"C6EFCE","تليفون":"DDEBF7","X":"FFC7CE"};
 function sheetName(n,used){let s=String(n).replace(/[\\\/\?\*\[\]:]/g,"").trim().slice(0,28)||"خدمة";let k=s,i=2;while(used.has(k.toLowerCase()))k=s.slice(0,25)+" "+(i++);used.add(k.toLowerCase());return k}
 function addSheet(wb,used,name,aoa,widths,o={}){
   const ws=wb.addWorksheet(sheetName(name,used),{views:[{rightToLeft:true,state:"frozen",ySplit:1}]});
@@ -319,45 +389,44 @@ function addSheet(wb,used,name,aoa,widths,o={}){
   return ws;
 }
 function summaryAoa(sid,t){
-  const st=stats(sid,t);
-  const rows=st.map(x=>[x.sv.name,...x.c,x.ok,x.ex,x.p==null?"":x.p,rate(x.p)]);
-  if(rows.length){const p=avg(st.map(x=>x.p));rows.push(["المتوسط",...ITEMS.map((_,i)=>st.reduce((s,x)=>s+x.c[i],0)),st.reduce((s,x)=>s+x.ok,0),st.reduce((s,x)=>s+x.ex,0),p==null?"":p,rate(p)])}
-  return[["الخادم",...ITEMS,"إجمالي الالتزام","أيام العذر","النسبة","التقدير"],...rows];
+  const st=stats(sid,t),rows=st.map(o=>{const r=rowOf(o);r[9]=o.p==null?"":o.p;return r});
+  if(rows.length){const r=totalRow(st);r[9]=r[9]==null?"":r[9];rows.push(r)}
+  return[REPORT_HEAD,...rows];
 }
-const SUMW=[22,...ITEMS.map(()=>15),15,11,10,18];
+const SUMW=[22,15,15,15,13,15,17,14,11,10,18];
 function detailAoa(list,t,withSvc){
-  const out=[[...(withSvc?["الخدمة"]:[]),"التاريخ","الخادم",...ITEMS]];
+  const out=[[...(withSvc?["الخدمة"]:[]),"التاريخ","الخادم",...ITEMS.map(x=>x.n)]];
   for(const v of list){
     const nm={};servants(v.id).forEach((s,i)=>nm[s.id]={n:s.name,i});
-    const recs=[];
-    for(const k in D.cells){const[vid,d]=splitKey(k);if(!nm[vid]||!t(d))continue;const row=D.cells[k].r;if(/^0+$/.test(row))continue;recs.push([d,nm[vid].i,nm[vid].n,row])}
-    recs.sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:a[1]-b[1]);
-    for(const r of recs)out.push([...(withSvc?[v.name]:[]),r[0],r[2],...[...r[3]].map(x=>SYM[+x])]);
+    const recs={};
+    for(const k in S.weeks){const w=S.weeks[k];if(w.sid!==v.id||!t(w.date))continue;
+      for(const ck in w.cells){const u=ck.lastIndexOf("_"),vid=ck.slice(0,u),i=+ck.slice(u+1);if(!nm[vid]||!ITEMS[i]||!w.cells[ck])continue;
+        const key=w.date+"|"+vid;(recs[key]=recs[key]||{d:w.date,vid,c:Array(NI).fill(0)}).c[i]=+w.cells[ck]}}
+    Object.values(recs).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:nm[a.vid].i-nm[b.vid].i)
+      .forEach(r=>out.push([...(withSvc?[v.name]:[]),r.d,nm[r.vid].n,...r.c.map((s,i)=>ITEMS[i].sym[s])]));
   }
   return out;
 }
 async function buildReport(v){
   if(!window.ExcelJS)throw new Error("مكتبة الإكسيل غير محمّلة");
   const t=testFn(),wb=new ExcelJS.Workbook(),used=new Set();wb.creator="متابعة الخدام";
-  const safe=s=>String(s).replace(/[\\\/:*?"<>|]/g,"").trim();
   const asciiPer=ui.per==="all"?"all":periodLabel();
-  let name,driveName;
+  let name;
   if(ui.scope==="all"){
     const l=svcList();
     const cmp=[["الخدمة","عدد الخدام","متوسط الالتزام","التقدير"],...l.map(x=>{const p=avg(stats(x.id,t).map(y=>y.p));return[x.name,servants(x.id).length,p==null?"":p,rate(p)]})];
     addSheet(wb,used,"مقارنة الخدمات",cmp,[26,13,17,18],{pct:[3],rate:4});
-    l.forEach(x=>addSheet(wb,used,x.name,summaryAoa(x.id,t),SUMW,{pct:[11],rate:12,lastBold:true}));
-    addSheet(wb,used,"التفاصيل",detailAoa(l,t,true),[22,13,22,...ITEMS.map(()=>15)],{paintFrom:4});
-    driveName="متابعة الخدام - كل الخدمات - "+periodLabel()+".xlsx";
+    l.forEach(x=>addSheet(wb,used,x.name,summaryAoa(x.id,t),SUMW,{pct:[10],rate:11,lastBold:true}));
+    addSheet(wb,used,"التفاصيل",detailAoa(l,t,true),[22,13,22,...ITEMS.map(()=>17)],{paintFrom:4});
     name="servants-followup-all-services-"+asciiPer+".xlsx";
   }else{
-    addSheet(wb,used,"الملخص",summaryAoa(v.id,t),SUMW,{pct:[11],rate:12,lastBold:true});
-    addSheet(wb,used,"التفاصيل",detailAoa([v],t,false),[13,22,...ITEMS.map(()=>15)],{paintFrom:3});
-    driveName="متابعة الخدام - "+safe(v.name)+" - "+periodLabel()+".xlsx";
+    if(!v)throw new Error("لا توجد خدمة");
+    addSheet(wb,used,"الملخص",summaryAoa(v.id,t),SUMW,{pct:[10],rate:11,lastBold:true});
+    addSheet(wb,used,"التفاصيل",detailAoa([v],t,false),[13,22,...ITEMS.map(()=>17)],{paintFrom:3});
     name="servants-followup-service"+(svcList().findIndex(x=>x.id===v.id)+1)+"-"+asciiPer+".xlsx";
   }
   const buf=await wb.xlsx.writeBuffer();
-  return{blob:new Blob([buf],{type:XLSX_MIME}),name,driveName};
+  return{blob:new Blob([buf],{type:XLSX_MIME}),name};
 }
 async function saveFile(blob,name){
   if(isIOS&&navigator.canShare){
@@ -367,168 +436,82 @@ async function saveFile(blob,name){
   setTimeout(()=>URL.revokeObjectURL(a.href),8000);
 }
 
-/* ============================ Google Drive sync ============================ */
-let tok=null,tokExp=0,tokenClient=null,tokenCid="",gisPromise=null;
-try{const s=JSON.parse(sessionStorage.getItem(TOKKEY)||"null");if(s&&s.exp>now()+60000){tok=s.t;tokExp=s.exp}}catch(e){}
-const validTok=()=>tok&&now()<tokExp-60000;
-function loadGis(){
-  if(window.google&&google.accounts&&google.accounts.oauth2)return Promise.resolve();
-  if(gisPromise)return gisPromise;
-  gisPromise=new Promise((res,rej)=>{
-    const s=document.createElement("script");s.src="https://accounts.google.com/gsi/client";s.async=true;
-    s.onload=()=>res();s.onerror=()=>{gisPromise=null;rej({code:"offline",message:"تعذر تحميل خدمة تسجيل الدخول من Google"})};
-    document.head.appendChild(s);
-  });
-  return gisPromise;
-}
-async function getToken(interactive){
-  if(validTok())return tok;
-  if(!interactive)throw{code:"need_signin"};
-  await loadGis();
-  return new Promise((resolve,reject)=>{
-    if(!tokenClient||tokenCid!==cfg.cid){tokenClient=google.accounts.oauth2.initTokenClient({client_id:cfg.cid,scope:SCOPE,callback:()=>{},error_callback:()=>{}});tokenCid=cfg.cid}
-    tokenClient.callback=r=>{
-      if(!r||r.error)return reject({code:(r&&r.error)||"auth",message:(r&&(r.error_description||r.error))||"فشل تسجيل الدخول"});
-      tok=r.access_token;tokExp=now()+(+r.expires_in||3600)*1000;
-      try{sessionStorage.setItem(TOKKEY,JSON.stringify({t:tok,exp:tokExp}))}catch(e){}
-      resolve(tok);
-    };
-    tokenClient.error_callback=e=>reject({code:(e&&e.type)||"popup",message:e&&e.message});
-    tokenClient.requestAccessToken({prompt:""});
-  });
-}
-async function gfetch(url,opt={}){
-  const r=await fetch(url,Object.assign({},opt,{headers:Object.assign({},opt.headers||{},{Authorization:"Bearer "+tok})}));
-  if(r.status===401){tok=null;try{sessionStorage.removeItem(TOKKEY)}catch(e){}throw{code:"need_signin"}}
-  if(!r.ok){let m="";try{m=(await r.json()).error.message}catch(e){}throw{code:"http_"+r.status,message:m||r.statusText}}
-  return r;
-}
-async function findFile(){
-  const q=encodeURIComponent(`name='${FILE_NAME}' and trashed=false`);
-  const r=await gfetch(`https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=createdTime&pageSize=5&fields=files(id,name,createdTime)`);
-  const j=await r.json();return j.files&&j.files[0]?j.files[0].id:"";
-}
-async function downloadFile(id){
-  const r=await gfetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
-  let o;try{o=JSON.parse(await r.text())}catch(e){throw{code:"bad_file",message:"ملف البيانات على Drive تالف"}}
-  if(!validShape(o))throw{code:"bad_file",message:"ملف البيانات على Drive بصيغة غير معروفة"};
-  return o;
-}
-function multipart(meta,bytes,mime){
-  const b="sv"+uid();
-  const head=`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: ${mime}\r\n\r\n`;
-  return{body:new Blob([head,bytes,`\r\n--${b}--`]),type:"multipart/related; boundary="+b};
-}
-async function createFile(json){
-  const m=multipart({name:FILE_NAME,mimeType:"application/json"},json,"application/json; charset=UTF-8");
-  const r=await gfetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",{method:"POST",headers:{"Content-Type":m.type},body:m.body});
-  return (await r.json()).id;
-}
-async function updateFile(id,json){
-  await gfetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,{method:"PATCH",headers:{"Content-Type":"application/json; charset=UTF-8"},body:json});
-}
-function scheduleSync(){if(!cfg.cid||!cfg.connected)return;clearTimeout(sync.timer);sync.timer=setTimeout(()=>doSync(false),2000)}
-async function doSync(interactive){
-  if(!cfg.cid||!cfg.connected||sync.busy)return;
-  if(!navigator.onLine){sync.err="بدون اتصال";paintChip();return}
-  sync.busy=true;sync.err="";paintChip();
-  try{
-    await getToken(interactive);
-    let fid=cfg.fileId,remote=null;
-    if(fid){try{remote=await downloadFile(fid)}catch(e){if(e&&e.code==="http_404")fid="";else throw e}}
-    if(!fid){fid=await findFile();if(fid)remote=await downloadFile(fid)}
-    const seq=cfg.seq;
-    D=merge(D,remote);persist();
-    const json=JSON.stringify(D);
-    if(!fid)fid=await createFile(json);
-    else if(!remote||hasNewer(D,remote))await updateFile(fid,json);
-    cfg.fileId=fid;cfg.last=now();cfg.dirty=cfg.seq!==seq;saveCfg();
-    if(cfg.dirty)scheduleSync();
-  }catch(e){
-    const c=e&&e.code;
-    if(c==="need_signin"||c==="popup_closed"||c==="popup_failed_to_open"||c==="access_denied"){
-      sync.err="اضغط للمزامنة";
-      if(interactive&&c!=="need_signin")ui.msg="لم يكتمل تسجيل الدخول إلى Google";
-    }else if(c==="offline"){sync.err="بدون اتصال";if(interactive)ui.msg=e.message||""}
-    else{sync.err="تعذرت المزامنة";ui.msg=(e&&e.message)||"تعذرت المزامنة مع Google Drive"}
-  }finally{sync.busy=false;paintChip();softRender();if(ui.msg){clearTimeout(msgTimer);msgTimer=setTimeout(()=>{ui.msg="";render()},4500)}}
-}
-async function connect(){
-  const cid=($app.querySelector("#cid")||{}).value;const id=(cid||"").trim();
-  if(!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(id)){flash("المعرّف غير صحيح، يجب أن ينتهي بـ apps.googleusercontent.com");return}
-  cfg.cid=id;cfg.connected=true;saveCfg();render();
-  await doSync(true);
-  if(sync.err&&!validTok()){cfg.connected=false;saveCfg();sync.err="";render()}
-}
-function disconnect(){
-  try{if(tok&&window.google&&google.accounts&&google.accounts.oauth2)google.accounts.oauth2.revoke(tok,()=>{})}catch(e){}
-  tok=null;tokExp=0;try{sessionStorage.removeItem(TOKKEY)}catch(e){}
-  cfg.connected=false;cfg.fileId="";saveCfg();sync.err="";render();
-}
-async function uploadReport(v){
-  try{
-    const{blob,driveName:name}=await buildReport(v);
-    await getToken(true);
-    const m=multipart({name,mimeType:XLSX_MIME},blob,XLSX_MIME);
-    await gfetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id",{method:"POST",headers:{"Content-Type":m.type},body:m.body});
-    flash("تم حفظ التقرير في Drive: "+name);
-  }catch(e){flash((e&&e.code==="need_signin")?"اضغط الزر مرة أخرى لتسجيل الدخول":"تعذر حفظ التقرير: "+((e&&e.message)||"خطأ"));paintChip()}
-}
-
 /* ============================ events ============================ */
+const wpath=(sid,d)=>"services/"+sid+"/weeks/"+d;
+function writeCell(sid,d,vid,i,val){FB.set(wpath(sid,d),{cells:{[cellKey(vid,i)]:val}},true).catch(failMsg)}
+function writeCells(sid,d,obj){FB.set(wpath(sid,d),{cells:obj},true).catch(failMsg)}
+function readUserForm(idx){
+  const q=f=>$app.querySelector(`[data-uf="${idx}"][data-f="${f}"]`);
+  const all=(f)=>[...$app.querySelectorAll(`[data-uf="${idx}"][data-f="${f}"]`)];
+  const screens={};SCREENS.forEach(([k])=>{const e=all("scr").find(x=>x.dataset.k===k);screens[k]=!!(e&&e.checked)});
+  const eml=q("email");
+  return{email:eml?eml.value.trim().toLowerCase():"",name:q("name").value.trim(),role:q("admin").checked?"admin":"user",active:q("active").checked,screens,services:all("svc").filter(x=>x.checked).map(x=>x.dataset.k)};
+}
 $app.addEventListener("click",async e=>{
   const b=e.target.closest("[data-a]");if(!b||b.tagName==="INPUT"||b.tagName==="SELECT")return;
   const a=b.dataset.a,id=b.dataset.id,v=cur();
+  if(a==="login"){ui.busy=true;render();try{await FB.signIn()}catch(x){ui.busy=false;if(!(x&&(x.code==="auth/popup-closed-by-user"||x.code==="auth/cancelled-popup-request")))flash("تعذر تسجيل الدخول: "+((x&&x.code)||"خطأ"));render();return}ui.busy=false;render();return}
+  if(a==="logout"){
+    if(Object.values(S.pend).some(Boolean)){flash("توجد تعديلات لم تُرفع بعد. اتصل بالإنترنت وانتظر ثم أعد المحاولة");return}
+    try{await FB.signOutAndClear()}catch(x){}location.reload();return}
   if(a==="tab"){ui.tab=b.dataset.t;ui.del=null}
-  else if(a==="chip"){if(cfg.cid&&cfg.connected){doSync(true);return}ui.tab="adm"}
   else if(a==="d"){ui.date=+b.dataset.n?addDays(ui.date,+b.dataset.n):today}
-  else if(a==="c"){const s=b.dataset.s,i=+b.dataset.i,r=[...getRow(s,ui.date)];r[i]=String((+r[i]+1)%4);setRow(s,ui.date,r.join(""))}
-  else if(a==="col"){const sv=servants(v.id),i=+b.dataset.i,all=sv.every(s=>getRow(s.id,ui.date)[i]==="1");sv.forEach(s=>{const r=[...getRow(s.id,ui.date)];r[i]=all?"0":"1";setRow(s.id,ui.date,r.join(""))})}
-  else if(a==="row"){const all=[...getRow(b.dataset.s,ui.date)].every(x=>x==="1");setRow(b.dataset.s,ui.date,(all?"0":"1").repeat(7))}
+  else if(a==="c"){const s=b.dataset.s,i=+b.dataset.i;writeCell(v.id,ui.date,s,i,(getState(v.id,ui.date,s,i)+1)%4);return}
+  else if(a==="col"){const i=+b.dataset.i,sv=servants(v.id),all=sv.every(s=>getState(v.id,ui.date,s.id,i)===1),o={};sv.forEach(s=>o[cellKey(s.id,i)]=all?0:1);writeCells(v.id,ui.date,o);return}
+  else if(a==="row"){const s=b.dataset.s,all=ITEMS.every((_,i)=>getState(v.id,ui.date,s,i)===1),o={};ITEMS.forEach((_,i)=>o[cellKey(s,i)]=all?0:1);writeCells(v.id,ui.date,o);return}
   else if(a==="xl"){try{const r=await buildReport(v);await saveFile(r.blob,r.name)}catch(x){flash("تعذر إنشاء الملف: "+((x&&x.message)||"خطأ"))}return}
-  else if(a==="xd"){await uploadReport(v);return}
-  else if(a==="sel"){ui.sid=id;try{localStorage.setItem("servants_pwa_sid",id)}catch(x){}}
-  else if(a==="as"){const n=$app.querySelector("#ns").value.trim();if(!n)return;const x={id:uid(),name:n,order:now()};putSvc(x);ui.sid=x.id;try{localStorage.setItem("servants_pwa_sid",x.id)}catch(y){}}
-  else if(a==="av"){const l=$app.querySelector("#nv").value.split("\n").map(x=>x.trim()).filter(Boolean);if(!l.length)return;l.forEach((n,i)=>{const s={id:uid(),sid:v.id,name:n,order:now()+i};D.srv[s.id]=Object.assign({},s,{t:now()})});touch()}
-  else if(a==="sd"||a==="vd"){ui.del=(a==="sd"?"s":"v")+id}
+  else if(a==="sel"){ui.sid=id;try{localStorage.setItem("servants_fb_sid",id)}catch(x){}}
+  else if(a==="as"){const n=$app.querySelector("#ns").value.trim();if(!n)return;const sid=uid();ui.sid=sid;try{localStorage.setItem("servants_fb_sid",sid)}catch(x){}FB.set("services/"+sid,{name:n,order:Date.now()}).catch(failMsg);S.svc[sid]={id:sid,name:n,order:Date.now()}}
+  else if(a==="av"){const l=$app.querySelector("#nv").value.split("\n").map(x=>x.trim()).filter(Boolean);if(!l.length)return;l.forEach((n,i)=>FB.set("services/"+v.id+"/servants/"+uid(),{name:n,order:Date.now()+i}).catch(failMsg));$app.querySelector("#nv").value=""}
+  else if(a==="sd"||a==="vd"||a==="ud"){ui.del=(a==="sd"?"s":a==="vd"?"v":"u")+id}
   else if(a==="dc"){ui.del=null}
-  else if(a==="sx"){ui.del=null;removeService(id)}
-  else if(a==="vx"){ui.del=null;removeServant(id)}
-  else if(a==="conn"){await connect();return}
-  else if(a==="sync"){doSync(true);return}
-  else if(a==="disc"){disconnect();return}
-  else if(a==="bk"){saveFile(new Blob([JSON.stringify(D)],{type:"application/json"}),"servants-backup-"+today+".json");return}
-  else if(a==="rs"){$app.querySelector("#rf").click();return}
+  else if(a==="sx"){ui.del=null;
+    const paths=[...servants(id).map(s=>"services/"+id+"/servants/"+s.id),...Object.values(S.weeks).filter(w=>w.sid===id).map(w=>wpath(id,w.date)),"services/"+id];
+    FB.delMany(paths).catch(failMsg)}
+  else if(a==="vx"){ui.del=null;FB.del("services/"+v.id+"/servants/"+id).catch(failMsg)}
+  else if(a==="ux"){const u=(ui._ulist||[])[+id];ui.del=null;if(u&&u.email!==ADMIN)FB.del("users/"+u.email).catch(failMsg)}
+  else if(a==="uadd"||a==="usave"){
+    const idx=a==="uadd"?"new":b.dataset.idx,f=readUserForm(idx);
+    let email=f.email;if(a==="usave"){const u=(ui._ulist||[])[+idx];email=u&&u.email}
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email||"")){flash("اكتب بريداً إلكترونياً صحيحاً");return}
+    if(email===ADMIN){f.role="admin";f.active=true}
+    FB.set("users/"+email,{email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services}).then(()=>flash(a==="uadd"?"تمت إضافة المستخدم":"تم الحفظ")).catch(failMsg);
+    if(a==="uadd")render();
+    return;
+  }
   else if(a==="inst"){if(deferredInstall){deferredInstall.prompt();try{await deferredInstall.userChoice}catch(x){}deferredInstall=null}}
   render();
 });
-$app.addEventListener("change",async e=>{
+$app.addEventListener("change",e=>{
   const t=e.target,a=t.dataset.a;
-  if(t.id==="rf"){
-    const f=t.files&&t.files[0];if(!f)return;
-    try{const o=JSON.parse(await f.text());if(!validShape(o))throw 0;D=merge(D,o);touch();flash("تم دمج النسخة الاحتياطية")}catch(x){flash("الملف غير صالح")}
-    return;
-  }
-  if(t.id==="sv"){ui.sid=t.value;try{localStorage.setItem("servants_pwa_sid",t.value)}catch(x){}}
+  if(t.dataset.uf)return;
+  if(t.id==="sv"){ui.sid=t.value;try{localStorage.setItem("servants_fb_sid",t.value)}catch(x){}}
   else if(t.id==="dt"){if(t.value)ui.date=t.value}
   else if(t.id==="per"){ui.per=t.value}else if(t.id==="scope"){ui.scope=t.value}
   else if(t.id==="mo"){if(t.value)ui.month=t.value}else if(t.id==="yr"){if(t.value)ui.year=String(t.value)}
-  else if(a==="sn"||a==="vn"){
-    const val=t.value.trim();
-    if(a==="sn"){const x=D.svc[t.dataset.id];if(x&&val&&val!==x.name)putSvc(Object.assign({},x,{name:val}))}
-    else{const x=D.srv[t.dataset.id];if(x&&val&&val!==x.name)putSrv(Object.assign({},x,{name:val}))}
-  }else return;
+  else if(a==="sn"){const val=t.value.trim();if(val)FB.set("services/"+t.dataset.id,{name:val},true).catch(failMsg)}
+  else if(a==="vn"){const val=t.value.trim(),v=cur();if(val&&v)FB.set("services/"+v.id+"/servants/"+t.dataset.id,{name:val},true).catch(failMsg)}
+  else return;
   render();
 });
-window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstall=e;if(ui.tab==="adm")softRender()});
-window.addEventListener("appinstalled",()=>{deferredInstall=null;softRender()});
-window.addEventListener("online",()=>scheduleSync());
-window.addEventListener("offline",()=>{paintChip()});
-document.addEventListener("visibilitychange",()=>{if(!document.hidden&&cfg.cid&&cfg.connected&&validTok())doSync(false)});
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstall=e;paint()});
+window.addEventListener("appinstalled",()=>{deferredInstall=null;paint()});
+window.addEventListener("online",()=>{S.online=true;paint()});
+window.addEventListener("offline",()=>{S.online=false;paint()});
 
 /* ============================ boot ============================ */
 render();
-if(cfg.cid&&cfg.connected){loadGis().catch(()=>{});doSync(false)}
+if(configured){
+  try{
+    FB.init(CFG);
+    FB.onAuth(u=>{
+      S.authReady=true;S.user=u;S.bootstrapped=false;
+      if(u&&u.verified===false){S.user=null;flash("بريد Google غير موثّق")}
+      if(S.user)startSession();else{unsubAll();S.me=undefined;S.svc={};S.srv={};S.weeks={};S.users={}}
+      render();
+    });
+  }catch(e){S.authReady=true;S.err="تعذر تهيئة Firebase: "+((e&&e.message)||"");render()}
+}
 if("serviceWorker"in navigator)addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{})});
 </script>
 </body>
