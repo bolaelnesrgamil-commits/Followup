@@ -112,6 +112,8 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const pad=n=>String(n).padStart(2,"0");
 const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return iso(d)};
+/* المتابعة تُثبَّت على يوم الجمعة: أقرب جمعة في اليوم نفسه أو قبله */
+const fridayOnOrBefore=s=>{const dow=new Date(s+"T12:00:00").getDay();return addDays(s,-((dow-5+7)%7))};
 const today=iso(new Date());
 const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const isStandalone=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
@@ -123,30 +125,41 @@ const placeholder=v=>!v||/PASTE/i.test(String(v));
 const configured=!placeholder(CFG.apiKey)&&!placeholder(CFG.projectId)&&!placeholder(CFG.appId)&&!placeholder(ADMIN)&&!!window.FB;
 
 /* ============================ state ============================ */
-const S={user:null,authReady:false,me:undefined,svc:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine};
-const ui={tab:"",sid:null,date:today,per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:""};
-try{ui.sid=localStorage.getItem("servants_fb_sid")}catch(e){}
+/* الهرم: خدمة (svc) ← فصل (cls) ← خادم (srv). سجلات المتابعة (weeks) تخص الفصل. */
+const S={user:null,authReady:false,me:undefined,svc:{},cls:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine};
+const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:""};
+try{ui.sid=localStorage.getItem("servants_fb_sid");ui.cid=localStorage.getItem("servants_fb_cid")}catch(e){}
+const store=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const subs={};
-let deferredInstall=null,lastTab="",msgTimer=0,raf=0;
+let deferredInstall=null,msgTimer=0,paintT=0,lastTab="";
 
 const isOwner=()=>!!S.user&&!!ADMIN&&S.user.email===ADMIN;
 const isAdmin=()=>!!S.user&&(isOwner()||!!(S.me&&S.me.active!==false&&S.me.role==="admin"));
 const isActive=()=>isOwner()||!!(S.me&&S.me.active!==false);
 const can=sc=>isAdmin()||!!(isActive()&&S.me&&S.me.screens&&S.me.screens[sc]);
-const mySvcIds=()=>isAdmin()?Object.keys(S.svc):((S.me&&S.me.services)||[]).filter(id=>S.svc[id]);
-const svcList=()=>mySvcIds().map(id=>S.svc[id]).sort((a,b)=>(a.order||0)-(b.order||0));
+const mFull=()=>(S.me&&S.me.full)||[];
+const mCls=()=>(S.me&&S.me.classes)||[];
+const mSvcs=()=>(S.me&&S.me.services)||[];
+const ckey=(sid,cid)=>sid+"_"+cid;
+const clsAllowed=c=>isAdmin()||mFull().includes(c.sid)||mCls().includes(ckey(c.sid,c.id));
+const svcList=()=>{const ids=isAdmin()?Object.keys(S.svc):mSvcs().filter(id=>S.svc[id]);return ids.map(id=>S.svc[id]).sort((a,b)=>(a.order||0)-(b.order||0))};
 const cur=()=>{const l=svcList();return l.find(x=>x.id===ui.sid)||l[0]||null};
-const servants=sid=>Object.values(S.srv).filter(x=>x.sid===sid).sort((a,b)=>(a.order||0)-(b.order||0));
+const classesOf=sid=>Object.values(S.cls).filter(c=>c.sid===sid&&clsAllowed(c)).sort((a,b)=>(a.order||0)-(b.order||0));
+const curCls=()=>{const v=cur();if(!v)return null;const l=classesOf(v.id);return l.find(c=>c.id===ui.cid)||l[0]||null};
+const servants=cid=>Object.values(S.srv).filter(x=>x.cid===cid).sort((a,b)=>(a.order||0)-(b.order||0));
 const tabsAllowed=()=>{const t=[];if(can("rec"))t.push(["rec","المتابعة"]);if(can("rep"))t.push(["rep","التقارير"]);if(can("srv"))t.push(["srv","الخدمات والخدام"]);if(isAdmin())t.push(["usr","المستخدمون"]);t.push(["acc","حسابي"]);return t};
 const cellKey=(vid,i)=>vid+"_"+i;
-const getState=(sid,date,vid,i)=>{const w=S.weeks[sid+"|"+date];return(w&&w.cells&&w.cells[cellKey(vid,i)])||0};
+const getState=(cid,date,vid,i)=>{const w=S.weeks[cid+"|"+date];return(w&&w.cells&&w.cells[cellKey(vid,i)])||0};
+const cpath=(sid,cid)=>"services/"+sid+"/classes/"+cid;
+const wpath=(sid,cid,d)=>cpath(sid,cid)+"/weeks/"+d;
+const spath=(sid,cid,vid)=>cpath(sid,cid)+"/servants/"+vid;
 
 /* ============================ statistics ============================ */
-function stats(sid,test){
-  const sv=servants(sid),by={};
+function stats(cid,test){
+  const sv=servants(cid),by={};
   sv.forEach(s=>by[s.id]={sv:s,cnt:ITEMS.map(()=>[0,0,0,0]),score:0,rec:0,ex:0,p:null});
   for(const k in S.weeks){
-    const w=S.weeks[k];if(w.sid!==sid||!test(w.date))continue;
+    const w=S.weeks[k];if(w.cid!==cid||!test(w.date))continue;
     for(const ck in (w.cells||{})){
       const u=ck.lastIndexOf("_"),vid=ck.slice(0,u),i=+ck.slice(u+1),st=+w.cells[ck],o=by[vid];
       if(!o||!ITEMS[i]||!st)continue;
@@ -174,11 +187,21 @@ function totalRow(st){
 const dbErr=e=>{S.err=(e&&e.code==="permission-denied")?"رفضت قاعدة البيانات الطلب. تأكد من نشر قواعد Firestore ومن تسجيل بريدك لدى المدير.":"تعذر الاتصال بقاعدة البيانات"+(e&&e.code?" ("+e.code+")":"");paint()};
 const setPend=(k,m)=>{S.pend[k]=!!(m&&m.pending)};
 function unsubAll(){for(const k in subs){try{subs[k]()}catch(e){}delete subs[k]}}
+function dropClass(cid){
+  delete S.cls[cid];
+  for(const k in S.srv)if(S.srv[k].cid===cid)delete S.srv[k];
+  for(const k in S.weeks)if(S.weeks[k].cid===cid)delete S.weeks[k];
+}
+function dropService(id){
+  delete S.svc[id];
+  Object.values(S.cls).filter(c=>c.sid===id).forEach(c=>dropClass(c.id));
+}
 function reconcile(){
   if(!S.user||!isActive())return;
-  const want=new Set(["me"]);
+  const admin=isAdmin(),want=new Set(["me"]);
   const add=(k,fn)=>{want.add(k);if(!subs[k])subs[k]=fn()};
-  if(isAdmin()){
+  if(!admin)Object.values(S.cls).forEach(c=>{if(!clsAllowed(c))dropClass(c.id)});
+  if(admin){
     add("svcs",()=>FB.watchCol("services",(list,m)=>{
       setPend("svcs",m);const seen={};
       list.forEach(d=>{seen[d.id]=1;S.svc[d.id]={id:d.id,name:d.name||"",order:d.order||0}});
@@ -187,38 +210,59 @@ function reconcile(){
     },dbErr));
     add("users",()=>FB.watchCol("users",(list,m)=>{setPend("users",m);S.users={};list.forEach(d=>S.users[d.id]=d);paint()},dbErr));
   }
-  for(const sid of (isAdmin()?Object.keys(S.svc):((S.me&&S.me.services)||[]))){
-    if(!isAdmin())add("svc:"+sid,()=>FB.watchDoc("services/"+sid,(d,m)=>{setPend("svc:"+sid,m);if(d)S.svc[sid]={id:sid,name:d.name||"",order:d.order||0};else dropService(sid);S.err="";paint()},dbErr));
-    add("srv:"+sid,()=>FB.watchCol("services/"+sid+"/servants",(list,m)=>{
-      setPend("srv:"+sid,m);
-      for(const k in S.srv)if(S.srv[k].sid===sid)delete S.srv[k];
-      list.forEach(d=>S.srv[d.id]={id:d.id,sid,name:d.name||"",order:d.order||0});paint();
+  for(const sid of (admin?Object.keys(S.svc):mSvcs())){
+    if(!admin)add("svc:"+sid,()=>FB.watchDoc("services/"+sid,(d,m)=>{setPend("svc:"+sid,m);if(d)S.svc[sid]={id:sid,name:d.name||"",order:d.order||0};else dropService(sid);S.err="";paint()},dbErr));
+    const upsert=(cid,d)=>{S.cls[cid]={id:cid,sid,name:d.name||"",order:d.order||0}};
+    if(admin||mFull().includes(sid)){
+      add("cls:"+sid,()=>FB.watchCol("services/"+sid+"/classes",(list,m)=>{
+        setPend("cls:"+sid,m);const seen={};
+        list.forEach(d=>{seen[d.id]=1;upsert(d.id,d)});
+        Object.values(S.cls).filter(c=>c.sid===sid&&!seen[c.id]).forEach(c=>dropClass(c.id));
+        S.err="";reconcile();paint();
+      },dbErr));
+    }else{
+      for(const key of mCls()){
+        if(!key.startsWith(sid+"_"))continue;
+        const cid=key.slice(sid.length+1);
+        add("cl:"+key,()=>FB.watchDoc(cpath(sid,cid),(d,m)=>{setPend("cl:"+key,m);if(d)upsert(cid,d);else dropClass(cid);S.err="";reconcile();paint()},dbErr));
+      }
+    }
+  }
+  for(const c of Object.values(S.cls)){
+    if(!(admin||mSvcs().includes(c.sid)))continue;
+    const sid=c.sid,cid=c.id;
+    add("srv:"+cid,()=>FB.watchCol(cpath(sid,cid)+"/servants",(list,m)=>{
+      setPend("srv:"+cid,m);
+      for(const k in S.srv)if(S.srv[k].cid===cid)delete S.srv[k];
+      list.forEach(d=>S.srv[d.id]={id:d.id,sid,cid,name:d.name||"",order:d.order||0});paint();
     },dbErr));
-    if(can("rec")||can("rep"))add("wk:"+sid,()=>FB.watchCol("services/"+sid+"/weeks",(list,m)=>{
-      setPend("wk:"+sid,m);
-      for(const k in S.weeks)if(S.weeks[k].sid===sid)delete S.weeks[k];
-      list.forEach(d=>S.weeks[sid+"|"+d.id]={sid,date:d.id,cells:d.cells||{}});paint();
+    if(can("rec")||can("rep"))add("wk:"+cid,()=>FB.watchCol(cpath(sid,cid)+"/weeks",(list,m)=>{
+      setPend("wk:"+cid,m);
+      for(const k in S.weeks)if(S.weeks[k].cid===cid)delete S.weeks[k];
+      list.forEach(d=>S.weeks[cid+"|"+d.id]={sid,cid,date:d.id,cells:d.cells||{}});paint();
     },dbErr));
   }
-  for(const k of Object.keys(subs))if(!want.has(k)){subs[k]();delete subs[k];delete S.pend[k];const p=k.split(":");if(p[0]==="srv")for(const x in S.srv)if(S.srv[x].sid===p[1])delete S.srv[x];if(p[0]==="wk")for(const x in S.weeks)if(S.weeks[x].sid===p[1])delete S.weeks[x];if(p[0]==="svc")delete S.svc[p[1]]}
-}
-function dropService(id){
-  delete S.svc[id];
-  for(const k in S.srv)if(S.srv[k].sid===id)delete S.srv[k];
-  for(const k in S.weeks)if(S.weeks[k].sid===id)delete S.weeks[k];
+  for(const k of Object.keys(subs)){
+    if(want.has(k))continue;
+    subs[k]();delete subs[k];delete S.pend[k];
+    const p=k.split(":");
+    if(p[0]==="srv")for(const x in S.srv)if(S.srv[x].cid===p[1])delete S.srv[x];
+    if(p[0]==="wk")for(const x in S.weeks)if(S.weeks[x].cid===p[1])delete S.weeks[x];
+    if(p[0]==="svc")dropService(p[1]);
+  }
 }
 function startSession(){
-  unsubAll();S.me=undefined;S.svc={};S.srv={};S.weeks={};S.users={};S.err="";S.pend={};
+  unsubAll();S.me=undefined;S.svc={};S.cls={};S.srv={};S.weeks={};S.users={};S.err="";S.pend={};
   subs.me=FB.watchDoc("users/"+S.user.email,(d,m)=>{
     setPend("me",m);const first=S.me===undefined;S.me=d;
     if(!d&&isOwner()&&first&&!S.bootstrapped){
       S.bootstrapped=true;
-      FB.set("users/"+S.user.email,{email:S.user.email,name:S.user.name||"المدير",role:"admin",active:true,screens:{rec:true,rep:true,srv:true},services:[]}).catch(dbErr);
+      FB.set("users/"+S.user.email,{email:S.user.email,name:S.user.name||"المدير",role:"admin",active:true,screens:{rec:true,rep:true,srv:true},services:[],full:[],classes:[]}).catch(dbErr);
     }
     S.err="";reconcile();paint();
   },dbErr);
 }
-function paint(){clearTimeout(raf);raf=setTimeout(softRender,30)}
+function paint(){clearTimeout(paintT);paintT=setTimeout(softRender,30)}
 
 /* ============================ views ============================ */
 function flash(m){ui.msg=m;render();clearTimeout(msgTimer);msgTimer=setTimeout(()=>{ui.msg="";render()},3500)}
@@ -255,16 +299,24 @@ function installCard(){
 function stateBtn(i,s,attrs,label){
   const c=stCls(i,s);return `<button class="${c}" ${attrs} aria-label="${esc(label)}">${ITEMS[i].sym[s]||"&nbsp;"}</button>`;
 }
-function recView(v){
+function fridayOptions(){
+  const base=fridayOnOrBefore(today),l=[];
+  for(let k=-2;k<=60;k++)l.push(addDays(base,-7*k));
+  if(!l.includes(ui.date))l.push(ui.date);
+  l.sort().reverse();
+  return l.map(d=>`<option value="${d}"${d===ui.date?" selected":""}>الجمعة ${d}</option>`).join("");
+}
+function recView(v,cl){
   if(!v)return `<div class="card empty">لا توجد خدمة مسموح لك بها. تواصل مع أمين الخدمة.</div>`;
-  const sv=servants(v.id);
-  if(!sv.length)return `<div class="card empty">لا يوجد خدام في هذه الخدمة بعد.${can("srv")?" أضفهم من تبويب «الخدمات والخدام».":""}</div>`;
-  const st=stats(v.id,d=>d===ui.date);
-  let h=`<div class="card"><div class="bar"><button data-a="d" data-n="-7">الأسبوع السابق</button><input type="date" id="dt" value="${ui.date}" aria-label="تاريخ الأسبوع"><button data-a="d" data-n="7">الأسبوع التالي</button><button data-a="d" data-n="0">اليوم</button></div>
-  <div class="mut">اضغط على الخانة لتتبدل بين الحالات. للقداس والتحضير والخدمة والاجتماع: ✔ ثم ✘ ثم عذر. للإفتقاد: تليفون ثم زيارة ثم X. اضغط اسم البند أو اسم الخادم لتحديد الكل.</div>
+  if(!cl)return `<div class="card empty">لا يوجد فصل في هذه الخدمة${isAdmin()?". أضف فصلاً من تبويب «الخدمات والخدام»":" مسموح لك به. تواصل مع أمين الخدمة"}.</div>`;
+  const sv=servants(cl.id);
+  if(!sv.length)return `<div class="card empty">لا يوجد خدام في هذا الفصل بعد.${can("srv")?" أضفهم من تبويب «الخدمات والخدام».":""}</div>`;
+  const st=stats(cl.id,d=>d===ui.date);
+  let h=`<div class="card"><div class="bar"><button data-a="d" data-n="-7">الجمعة السابقة</button><select id="dt" aria-label="الجمعة">${fridayOptions()}</select><button data-a="d" data-n="7">الجمعة التالية</button><button data-a="d" data-n="0">آخر جمعة</button></div>
+  <div class="mut">المتابعة تُسجَّل ليوم الجمعة من كل أسبوع. اضغط على الخانة لتتبدل بين الحالات. للقداس والتحضير والخدمة والاجتماع: ✔ ثم ✘ ثم عذر. للإفتقاد: تليفون ثم زيارة ثم X. اضغط اسم البند أو اسم الخادم لتحديد الكل.</div>
   <div class="sc"><table><thead><tr><th class="nm">الخادم</th>${ITEMS.map((x,i)=>`<th data-a="col" data-i="${i}">${x.n}</th>`).join("")}<th>النسبة</th></tr></thead><tbody>`;
   sv.forEach((s,k)=>{
-    h+=`<tr><td class="nm" data-a="row" data-s="${s.id}">${esc(s.name)}</td>`+ITEMS.map((_,i)=>`<td class="c">${stateBtn(i,getState(v.id,ui.date,s.id,i),`data-a="c" data-s="${s.id}" data-i="${i}"`,s.name+" "+ITEMS[i].n)}</td>`).join("")+`<td>${pc(st[k].p)}</td></tr>`;
+    h+=`<tr><td class="nm" data-a="row" data-s="${s.id}">${esc(s.name)}</td>`+ITEMS.map((_,i)=>`<td class="c">${stateBtn(i,getState(cl.id,ui.date,s.id,i),`data-a="c" data-s="${s.id}" data-i="${i}"`,s.name+" "+ITEMS[i].n)}</td>`).join("")+`<td>${pc(st[k].p)}</td></tr>`;
   });
   h+=`</tbody><tfoot><tr><td class="nm">الملتزمون</td>${ITEMS.map((_,i)=>i===1?`<td>ت ${st.reduce((s,o)=>s+o.cnt[1][1],0)} · ز ${st.reduce((s,o)=>s+o.cnt[1][2],0)}</td>`:`<td>${st.reduce((s,o)=>s+o.cnt[i][1],0)}</td>`).join("")}<td>${pc(avg(st.map(o=>o.p)))}</td></tr></tfoot></table></div></div>`;
   return h;
@@ -273,41 +325,55 @@ function tbl(head,rows,rc){
   return `<div class="sc"><table><thead><tr>${head.map(t=>`<th>${t}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>{
     const cls=i===0?"nm":(i===rc&&c?"r-"+rcls(r.p):"");return `<td${cls?` class="${cls}"`:""}>${esc(c)}</td>`}).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
-function reportData(v){
+function classRows(list,t){
+  return list.map(c=>{const st=stats(c.id,t),p=avg(st.map(y=>y.p));return{c,st,p}});
+}
+function reportData(v,cl){
   const t=testFn();
   if(ui.scope==="all"){
-    const rows=svcList().map(x=>{const p=avg(stats(x.id,t).map(y=>y.p));const r=[x.name,String(servants(x.id).length),pc(p),rate(p)];r.p=p;return r});
-    return{head:["الخدمة","عدد الخدام","متوسط الالتزام","التقدير"],rc:3,rows};
+    const rows=svcList().map(x=>{const cs=classesOf(x.id),st=cs.flatMap(c=>stats(c.id,t)),p=avg(st.map(y=>y.p));const r=[x.name,String(cs.length),String(st.length),pc(p),rate(p)];r.p=p;return r});
+    return{head:["الخدمة","عدد الفصول","عدد الخدام","متوسط الالتزام","التقدير"],rc:4,rows};
   }
-  if(!v)return{head:[],rc:0,rows:[]};
-  const st=stats(v.id,t);
+  if(ui.scope==="svc"){
+    if(!v)return{head:[],rc:0,rows:[]};
+    const rows=classRows(classesOf(v.id),t).map(o=>{const r=[o.c.name,String(o.st.length),pc(o.p),rate(o.p)];r.p=o.p;return r});
+    return{head:["الفصل","عدد الخدام","متوسط الالتزام","التقدير"],rc:3,rows};
+  }
+  if(!cl)return{head:[],rc:0,rows:[]};
+  const st=stats(cl.id,t);
   const fmt=a=>{const r=a.map((x,i)=>i===9?pc(x):String(x));r.p=a[9];return r};
   const rows=st.map(o=>fmt(rowOf(o)));
   if(rows.length)rows.push(fmt(totalRow(st)));
   return{head:REPORT_HEAD,rc:10,rows};
 }
-function repView(v){
-  const rd=reportData(v);
+function repView(v,cl){
+  const rd=reportData(v,cl);
   const per=`<select id="per" aria-label="الفترة"><option value="month"${ui.per==="month"?" selected":""}>شهر</option><option value="year"${ui.per==="year"?" selected":""}>سنة</option><option value="all"${ui.per==="all"?" selected":""}>كل الفترة</option></select>`+(ui.per==="month"?`<input type="month" id="mo" value="${ui.month}">`:ui.per==="year"?`<input type="number" id="yr" value="${ui.year}" style="width:96px">`:"");
-  return `<div class="card"><div class="bar"><select id="scope" aria-label="النطاق"><option value="one"${ui.scope==="one"?" selected":""}>الخدمة الحالية</option><option value="all"${ui.scope==="all"?" selected":""}>مقارنة كل الخدمات</option></select>${per}</div>
+  return `<div class="card"><div class="bar"><select id="scope" aria-label="النطاق"><option value="one"${ui.scope==="one"?" selected":""}>الفصل الحالي</option><option value="svc"${ui.scope==="svc"?" selected":""}>كل فصول الخدمة</option><option value="all"${ui.scope==="all"?" selected":""}>مقارنة كل الخدمات</option></select>${per}</div>
   <div class="bar"><button class="pri" data-a="xl">تحميل تقرير إكسيل</button></div>
   ${rd.rows.length?tbl(rd.head,rd.rows,rd.rc):'<div class="empty">لا توجد بيانات.</div>'}
   <div class="mut">النسبة = مجموع النقاط ÷ البنود المسجّلة بدون العذر. نقاط ✔ = 1، ✘ = 0، والإفتقاد: زيارة = 1، تليفون = ½، X = 0. التقدير: ممتاز 90% فأكثر، جيد جداً 75%، جيد 50%، وأقل من ذلك يحتاج إلى متابعة.</div></div>`;
 }
 function delBtn(k,id){return ui.del===k+id?`<button class="dng" data-a="${k}x" data-id="${id}">تأكيد الحذف</button><button data-a="dc">إلغاء</button>`:`<button class="dng" data-a="${k}d" data-id="${id}">حذف</button>`}
-function srvView(v){
+function srvView(v,cl){
   const admin=isAdmin();
-  const sv=v?servants(v.id):[];
-  return `${admin?`<div class="card"><h2>الخدمات</h2><div class="mut">لكل خدمة (فصل أو مرحلة) خدامها وسجلاتها وتقاريرها.</div>
+  const sv=cl?servants(cl.id):[];
+  const cls=v?classesOf(v.id):[];
+  return `${admin?`<div class="card"><h2>الخدمات</h2><div class="mut">الخدمة هي المرحلة، ولها فصول، ولكل فصل خدامه وسجلاته.</div>
   ${svcList().map(x=>`<div class="row"><input data-a="sn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الخدمة"><button data-a="sel" data-id="${x.id}" class="${v&&x.id===v.id?"on":""}">${v&&x.id===v.id?"الحالية":"اختيار"}</button>${delBtn("s",x.id)}</div>`).join("")}
-  <div class="row"><input id="ns" placeholder="اسم خدمة جديدة" aria-label="اسم خدمة جديدة"><button class="pri" data-a="as">إضافة خدمة</button></div></div>`:""}
-  ${v?`<div class="card"><h2>خدام «${esc(v.name)}»</h2>
+  <div class="row"><input id="ns" placeholder="اسم خدمة جديدة" aria-label="اسم خدمة جديدة"><button class="pri" data-a="as">إضافة خدمة</button></div></div>
+  ${v?`<div class="card"><h2>فصول «${esc(v.name)}»</h2>
+  ${cls.map(x=>`<div class="row"><input data-a="cn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الفصل"><button data-a="csel" data-id="${x.id}" class="${cl&&x.id===cl.id?"on":""}">${cl&&x.id===cl.id?"الحالي":"اختيار"}</button>${delBtn("c",x.id)}</div>`).join("")||'<div class="mut">لا توجد فصول بعد.</div>'}
+  <div class="row"><input id="nc" placeholder="اسم فصل جديد" aria-label="اسم فصل جديد"><button class="pri" data-a="ac">إضافة فصل</button></div></div>`:""}`:""}
+  ${cl?`<div class="card"><h2>خدام «${esc(v.name)} - ${esc(cl.name)}»</h2>
   ${sv.map(x=>`<div class="row"><input data-a="vn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الخادم">${delBtn("v",x.id)}</div>`).join("")}
-  <div class="mut">إضافة أسماء (اسم في كل سطر):</div><textarea id="nv" placeholder="مينا جرجس&#10;مريم سمير" aria-label="أسماء الخدام"></textarea><div><button class="pri" data-a="av">إضافة الأسماء</button></div></div>`:`<div class="card empty">${admin?"أضف خدمة أولاً.":"لا توجد خدمة مسموح لك بها."}</div>`}`;
+  <div class="mut">إضافة أسماء (اسم في كل سطر):</div><textarea id="nv" placeholder="مينا جرجس&#10;مريم سمير" aria-label="أسماء الخدام"></textarea><div><button class="pri" data-a="av">إضافة الأسماء</button></div></div>`:`<div class="card empty">${!v?(admin?"أضف خدمة أولاً.":"لا توجد خدمة مسموح لك بها."):(admin?"أضف فصلاً لهذه الخدمة أولاً.":"لا يوجد فصل مسموح لك به.")}</div>`}`;
 }
 function userForm(u,idx,isNew){
-  const sc=u.screens||{},sel=new Set(u.services||[]);
+  const sc=u.screens||{},full=new Set(u.full||[]),cs=new Set(u.classes||[]);
   const locked=!isNew&&u.email===ADMIN;
+  const access=svcList().map(x=>`<div class="chk"><label class="chk"><input type="checkbox" data-uf="${idx}" data-f="full" data-k="${x.id}"${full.has(x.id)?" checked":""}> <b>${esc(x.name)}</b> (كل الفصول)</label></div>`+
+    classesOf(x.id).map(c=>`<label class="chk" style="padding-inline-start:26px"><input type="checkbox" data-uf="${idx}" data-f="cls" data-sid="${x.id}" data-k="${ckey(x.id,c.id)}"${cs.has(ckey(x.id,c.id))?" checked":""}> ${esc(c.name)}</label>`).join("")).join("");
   return `<div class="ucard">
   ${isNew?`<input data-uf="${idx}" data-f="email" dir="ltr" placeholder="البريد الإلكتروني (Gmail) للمستخدم" style="text-align:left" aria-label="البريد الإلكتروني">`:`<div class="bar"><b dir="ltr">${esc(u.email)}</b>${locked?'<span class="badge">مدير النظام</span>':""}</div>`}
   <input data-uf="${idx}" data-f="name" value="${esc(u.name||"")}" placeholder="الاسم" aria-label="الاسم">
@@ -317,9 +383,9 @@ function userForm(u,idx,isNew){
   </div>
   <h3>الشاشات المسموحة</h3>
   <div class="grid">${SCREENS.map(([k,n])=>`<label class="chk"><input type="checkbox" data-uf="${idx}" data-f="scr" data-k="${k}"${sc[k]?" checked":""}> ${n}</label>`).join("")}</div>
-  <h3>الخدمات المسموحة</h3>
-  <div class="grid">${svcList().map(x=>`<label class="chk"><input type="checkbox" data-uf="${idx}" data-f="svc" data-k="${x.id}"${sel.has(x.id)?" checked":""}> ${esc(x.name)}</label>`).join("")||'<span class="mut">لا توجد خدمات بعد.</span>'}</div>
-  <div class="mut">المدير يرى كل الخدمات والشاشات بغض النظر عن هذه الخيارات.</div>
+  <h3>الخدمات والفصول المسموحة</h3>
+  <div>${access||'<span class="mut">لا توجد خدمات بعد.</span>'}</div>
+  <div class="mut">«كل الفصول» تشمل أي فصل يُضاف لاحقاً. المدير يرى كل شيء بغض النظر عن هذه الخيارات.</div>
   <div class="bar"><button class="pri" data-a="${isNew?"uadd":"usave"}" data-idx="${idx}">${isNew?"إضافة المستخدم":"حفظ"}</button>${isNew||locked?"":delBtn("u",String(idx))}</div></div>`;
 }
 function usrView(){
@@ -328,24 +394,32 @@ function usrView(){
   const base=location.origin+location.pathname.replace(/index\.html$/,"");
   return `<div class="card"><h2>رابط التطبيق</h2><div class="mut">أرسل هذا الرابط للمستخدمين. بعد إضافة بريد المستخدم هنا يدخل به بحساب Google.</div><code class="ltr">${esc(base)}</code></div>
   ${impView()}
-  <div class="card"><h2>إضافة مستخدم</h2>${userForm({screens:{rec:true,rep:true},services:[],active:true},"new",true)}</div>
+  <div class="card"><h2>إضافة مستخدم</h2>${userForm({screens:{rec:true,rep:true},full:[],classes:[],active:true},"new",true)}</div>
   <div class="card"><h2>المستخدمون (${list.length})</h2>${list.length?list.map((u,i)=>userForm(u,i,false)).join(""):'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>`;
 }
 function accView(){
-  const names=svcList().map(x=>x.name);
+  let acc;
+  if(isAdmin())acc="مدير: يرى كل الخدمات والفصول والشاشات.";
+  else{
+    const lines=svcList().map(x=>{
+      if(mFull().includes(x.id))return x.name+" (كل الفصول)";
+      const cs=classesOf(x.id).map(c=>c.name);return cs.length?x.name+": "+cs.join("، "):null}).filter(Boolean);
+    acc="المسموح لك: "+(lines.length?lines.join(" — "):"لا شيء");
+  }
   return `<div class="card"><h2>حسابي</h2>
   <div><b>${esc((S.me&&S.me.name)||S.user.name||"")}</b></div><code class="ltr">${esc(S.user.email)}</code>
-  <div class="mut">${isAdmin()?"مدير: يرى كل الخدمات والشاشات.":"الخدمات المسموحة: "+(names.length?esc(names.join("، ")):"لا شيء")}</div>
+  <div class="mut">${esc(acc)}</div>
   <div><button class="dng" data-a="logout">تسجيل الخروج</button></div></div>${installCard()}`;
 }
 function mainView(){
   const tabs=tabsAllowed();
   if(!tabs.some(t=>t[0]===ui.tab))ui.tab=tabs[0][0];
-  const l=svcList(),v=cur(),ci=chipInfo();
+  const l=svcList(),v=cur(),cl=curCls(),cls=v?classesOf(v.id):[],ci=chipInfo();
   let body;
-  if(ui.tab==="rec")body=recView(v);else if(ui.tab==="rep")body=repView(v);else if(ui.tab==="srv")body=srvView(v);else if(ui.tab==="usr")body=usrView();else body=accView();
+  if(ui.tab==="rec")body=recView(v,cl);else if(ui.tab==="rep")body=repView(v,cl);else if(ui.tab==="srv")body=srvView(v,cl);else if(ui.tab==="usr")body=usrView();else body=accView();
   return `<div class="wrap"><div class="hd"><h1>متابعة الخدام</h1>
     ${l.length?`<select id="sv" aria-label="الخدمة">${l.map(x=>`<option value="${x.id}"${v&&x.id===v.id?" selected":""}>${esc(x.name)}</option>`).join("")}</select>`:'<span class="sp"></span>'}
+    ${cls.length?`<select id="cl" aria-label="الفصل">${cls.map(x=>`<option value="${x.id}"${cl&&x.id===cl.id?" selected":""}>${esc(x.name)}</option>`).join("")}</select>`:""}
     <span class="chip ${ci.c}" id="chip">${ci.t}</span></div>
     <div class="tabs">${tabs.map(t=>`<button data-a="tab" data-t="${t[0]}" class="${ui.tab===t[0]?"on":""}">${t[1]}</button>`).join("")}</div>
     ${ui.msg?`<div class="msg" role="status">${esc(ui.msg)}</div>`:""}
@@ -370,7 +444,7 @@ function softRender(){const a=document.activeElement;if(a&&(a.tagName==="INPUT"|
 /* ============================ Excel ============================ */
 const NAVY="FF1F3864",BORDER={style:"thin",color:{argb:"FF999999"}};
 const FILLS={"ممتاز":"C6EFCE","جيد جداً":"C6EFCE","جيد":"FFEB9C","يحتاج إلى متابعة":"FFC7CE","✔":"C6EFCE","✘":"FFC7CE","عذر":"FFEB9C","زيارة":"C6EFCE","تليفون":"DDEBF7","X":"FFC7CE"};
-function sheetName(n,used){let s=String(n).replace(/[\\\/\?\*\[\]:]/g,"").trim().slice(0,28)||"خدمة";let k=s,i=2;while(used.has(k.toLowerCase()))k=s.slice(0,25)+" "+(i++);used.add(k.toLowerCase());return k}
+function sheetName(n,used){let s=String(n).replace(/[\\\/\?\*\[\]:]/g,"").trim().slice(0,28)||"ورقة";let k=s,i=2;while(used.has(k.toLowerCase()))k=s.slice(0,25)+" "+(i++);used.add(k.toLowerCase());return k}
 function addSheet(wb,used,name,aoa,widths,o={}){
   const ws=wb.addWorksheet(sheetName(name,used),{views:[{rightToLeft:true,state:"frozen",ySplit:1}]});
   aoa.forEach(r=>ws.addRow(r));
@@ -389,42 +463,54 @@ function addSheet(wb,used,name,aoa,widths,o={}){
   ws.getRow(1).height=38;
   return ws;
 }
-function summaryAoa(sid,t){
-  const st=stats(sid,t),rows=st.map(o=>{const r=rowOf(o);r[9]=o.p==null?"":o.p;return r});
+function summaryAoa(cid,t){
+  const st=stats(cid,t),rows=st.map(o=>{const r=rowOf(o);r[9]=o.p==null?"":o.p;return r});
   if(rows.length){const r=totalRow(st);r[9]=r[9]==null?"":r[9];rows.push(r)}
   return[REPORT_HEAD,...rows];
 }
 const SUMW=[22,15,15,15,13,15,17,14,11,10,18];
-function detailAoa(list,t,withSvc){
-  const out=[[...(withSvc?["الخدمة"]:[]),"التاريخ","الخادم",...ITEMS.map(x=>x.n)]];
-  for(const v of list){
-    const nm={};servants(v.id).forEach((s,i)=>nm[s.id]={n:s.name,i});
+/* pairs: [{v:خدمة, c:فصل}] */
+function detailAoa(pairs,t,withSvc,withCls){
+  const out=[[...(withSvc?["الخدمة"]:[]),...(withCls?["الفصل"]:[]),"التاريخ","الخادم",...ITEMS.map(x=>x.n)]];
+  for(const pr of pairs){
+    const nm={};servants(pr.c.id).forEach((s,i)=>nm[s.id]={n:s.name,i});
     const recs={};
-    for(const k in S.weeks){const w=S.weeks[k];if(w.sid!==v.id||!t(w.date))continue;
+    for(const k in S.weeks){const w=S.weeks[k];if(w.cid!==pr.c.id||!t(w.date))continue;
       for(const ck in w.cells){const u=ck.lastIndexOf("_"),vid=ck.slice(0,u),i=+ck.slice(u+1);if(!nm[vid]||!ITEMS[i]||!w.cells[ck])continue;
         const key=w.date+"|"+vid;(recs[key]=recs[key]||{d:w.date,vid,c:Array(NI).fill(0)}).c[i]=+w.cells[ck]}}
     Object.values(recs).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:nm[a.vid].i-nm[b.vid].i)
-      .forEach(r=>out.push([...(withSvc?[v.name]:[]),r.d,nm[r.vid].n,...r.c.map((s,i)=>ITEMS[i].sym[s])]));
+      .forEach(r=>out.push([...(withSvc?[pr.v.name]:[]),...(withCls?[pr.c.name]:[]),r.d,nm[r.vid].n,...r.c.map((s,i)=>ITEMS[i].sym[s])]));
   }
   return out;
 }
-async function buildReport(v){
+const detW=(withSvc,withCls)=>[...(withSvc?[22]:[]),...(withCls?[22]:[]),13,22,...ITEMS.map(()=>17)];
+const detPaint=(withSvc,withCls)=>(withSvc?1:0)+(withCls?1:0)+3;
+async function buildReport(v,cl){
   if(!window.ExcelJS)throw new Error("مكتبة الإكسيل غير محمّلة");
   const t=testFn(),wb=new ExcelJS.Workbook(),used=new Set();wb.creator="متابعة الخدام";
-  const asciiPer=ui.per==="all"?"all":periodLabel();
+  const per=ui.per==="all"?"all":periodLabel();
+  const classCmp=(pairs,withSvc)=>[[...(withSvc?["الخدمة"]:[]),"الفصل","عدد الخدام","متوسط الالتزام","التقدير"],...pairs.map(pr=>{const st=stats(pr.c.id,t),p=avg(st.map(y=>y.p));return[...(withSvc?[pr.v.name]:[]),pr.c.name,st.length,p==null?"":p,rate(p)]})];
   let name;
   if(ui.scope==="all"){
-    const l=svcList();
-    const cmp=[["الخدمة","عدد الخدام","متوسط الالتزام","التقدير"],...l.map(x=>{const p=avg(stats(x.id,t).map(y=>y.p));return[x.name,servants(x.id).length,p==null?"":p,rate(p)]})];
-    addSheet(wb,used,"مقارنة الخدمات",cmp,[26,13,17,18],{pct:[3],rate:4});
-    l.forEach(x=>addSheet(wb,used,x.name,summaryAoa(x.id,t),SUMW,{pct:[10],rate:11,lastBold:true}));
-    addSheet(wb,used,"التفاصيل",detailAoa(l,t,true),[22,13,22,...ITEMS.map(()=>17)],{paintFrom:4});
-    name="servants-followup-all-services-"+asciiPer+".xlsx";
-  }else{
+    const sl=svcList(),pairs=[];sl.forEach(x=>classesOf(x.id).forEach(c=>pairs.push({v:x,c})));
+    const cmp=[["الخدمة","عدد الفصول","عدد الخدام","متوسط الالتزام","التقدير"],...sl.map(x=>{const cs=classesOf(x.id),st=cs.flatMap(c=>stats(c.id,t)),p=avg(st.map(y=>y.p));return[x.name,cs.length,st.length,p==null?"":p,rate(p)]})];
+    addSheet(wb,used,"مقارنة الخدمات",cmp,[26,13,13,17,18],{pct:[4],rate:5});
+    addSheet(wb,used,"مقارنة الفصول",classCmp(pairs,true),[24,24,13,17,18],{pct:[4],rate:5});
+    pairs.forEach(pr=>addSheet(wb,used,pr.v.name+" - "+pr.c.name,summaryAoa(pr.c.id,t),SUMW,{pct:[10],rate:11,lastBold:true}));
+    addSheet(wb,used,"التفاصيل",detailAoa(pairs,t,true,true),detW(true,true),{paintFrom:detPaint(true,true)});
+    name="servants-followup-all-services-"+per+".xlsx";
+  }else if(ui.scope==="svc"){
     if(!v)throw new Error("لا توجد خدمة");
-    addSheet(wb,used,"الملخص",summaryAoa(v.id,t),SUMW,{pct:[10],rate:11,lastBold:true});
-    addSheet(wb,used,"التفاصيل",detailAoa([v],t,false),[13,22,...ITEMS.map(()=>17)],{paintFrom:3});
-    name="servants-followup-service"+(svcList().findIndex(x=>x.id===v.id)+1)+"-"+asciiPer+".xlsx";
+    const pairs=classesOf(v.id).map(c=>({v,c}));
+    addSheet(wb,used,"مقارنة الفصول",classCmp(pairs,false),[24,13,17,18],{pct:[3],rate:4});
+    pairs.forEach(pr=>addSheet(wb,used,pr.c.name,summaryAoa(pr.c.id,t),SUMW,{pct:[10],rate:11,lastBold:true}));
+    addSheet(wb,used,"التفاصيل",detailAoa(pairs,t,false,true),detW(false,true),{paintFrom:detPaint(false,true)});
+    name="servants-followup-service"+(svcList().findIndex(x=>x.id===v.id)+1)+"-"+per+".xlsx";
+  }else{
+    if(!v||!cl)throw new Error("لا يوجد فصل");
+    addSheet(wb,used,"الملخص",summaryAoa(cl.id,t),SUMW,{pct:[10],rate:11,lastBold:true});
+    addSheet(wb,used,"التفاصيل",detailAoa([{v,c:cl}],t,false,false),detW(false,false),{paintFrom:detPaint(false,false)});
+    name="servants-followup-service"+(svcList().findIndex(x=>x.id===v.id)+1)+"-class"+(classesOf(v.id).findIndex(c=>c.id===cl.id)+1)+"-"+per+".xlsx";
   }
   const buf=await wb.xlsx.writeBuffer();
   return{blob:new Blob([buf],{type:XLSX_MIME}),name};
@@ -437,10 +523,9 @@ async function saveFile(blob,name){
   setTimeout(()=>URL.revokeObjectURL(a.href),8000);
 }
 
-
 /* ============================ bulk import of users ============================ */
 const SCR_ALIAS={"المتابعة":"rec","متابعة":"rec","rec":"rec","التقارير":"rep","تقارير":"rep","rep":"rep","الخدمات والخدام":"srv","الخدمات":"srv","الخدام":"srv","srv":"srv"};
-const IMP_HEAD=["Gmail","الاسم","مدير؟ (نعم/لا)","الشاشات","الخدمات"];
+const IMP_HEAD=["Gmail","الاسم","مدير؟ (نعم/لا)","الشاشات","الخدمات والفصول"];
 function csvLine(l){const o=[];let c="",q=false;for(let i=0;i<l.length;i++){const ch=l[i];
   if(q){if(ch==='"'){if(l[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}
   else if(ch==='"')q=true;else if(ch===","){o.push(c);c=""}else c+=ch}
@@ -452,10 +537,10 @@ const splitList=v=>String(v||"").split(/[,،;؛|\n]+/).map(x=>x.trim()).filter(B
 function analyzeImport(text){
   let rows=parseTable(text);
   if(rows.length&&!String(rows[0][0]||"").includes("@"))rows=rows.slice(1);
-  const byName={};Object.values(S.svc).forEach(x=>byName[x.name.trim()]=x.id);
+  const byName={};svcList().forEach(x=>byName[x.name.trim()]=x);
   const seen=new Set();
   return rows.map((r,i)=>{
-    const o={n:i+1,email:String(r[0]||"").trim().toLowerCase(),name:r[1]||"",role:/^(نعم|yes|y|1|true|مدير|admin)$/i.test(r[2]||"")?"admin":"user",screens:{},services:[],svcNames:[],status:"new",msg:""};
+    const o={n:i+1,email:String(r[0]||"").trim().toLowerCase(),name:r[1]||"",role:/^(نعم|yes|y|1|true|مدير|admin)$/i.test(r[2]||"")?"admin":"user",screens:{},full:[],classes:[],services:[],items:[],status:"new",msg:""};
     const errs=[];
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(o.email))errs.push("بريد غير صحيح");
     else if(o.email===ADMIN)errs.push("حساب المدير لا يُعدَّل من هنا");
@@ -465,9 +550,17 @@ function analyzeImport(text){
     if(!sc.length)o.screens={rec:true};
     else if(sc.some(x=>/^(الكل|all)$/i.test(x)))o.screens={rec:true,rep:true,srv:true};
     else sc.forEach(x=>{const k=SCR_ALIAS[x];if(k)o.screens[k]=true;else errs.push("شاشة غير معروفة: "+x)});
-    const sv=splitList(r[4]);
-    if(sv.some(x=>/^(الكل|all)$/i.test(x))){o.services=Object.keys(S.svc);o.svcNames=["الكل"]}
-    else sv.forEach(x=>{const id=byName[x];if(id){o.services.push(id);o.svcNames.push(x)}else errs.push("خدمة غير موجودة: "+x)});
+    for(const x of splitList(r[4])){
+      if(/^(الكل|all)$/i.test(x)){o.full=Object.keys(S.svc);o.items.push("الكل");continue}
+      const parts=x.split("/").map(y=>y.trim());
+      const sv=byName[parts[0]];
+      if(!sv){errs.push("خدمة غير موجودة: "+parts[0]);continue}
+      if(parts.length===1){o.full.push(sv.id);o.items.push(sv.name+" (كل الفصول)");continue}
+      const cl=classesOf(sv.id).find(c=>c.name.trim()===parts[1]);
+      if(!cl){errs.push("فصل غير موجود: "+x);continue}
+      o.classes.push(ckey(sv.id,cl.id));o.items.push(sv.name+" / "+cl.name);
+    }
+    o.services=[...new Set([...o.full,...o.classes.map(k=>{const c=Object.values(S.cls).find(c=>ckey(c.sid,c.id)===k);return c&&c.sid})])].filter(Boolean);
     if(errs.length){o.status="err";o.msg=errs.join("، ")}
     else if(S.users[o.email])o.status="upd";
     return o;
@@ -490,8 +583,8 @@ async function readImpFile(f){
 async function impTemplate(){
   if(!window.ExcelJS)throw new Error("مكتبة الإكسيل غير محمّلة");
   const wb=new ExcelJS.Workbook(),used=new Set();
-  const names=svcList().map(x=>x.name);
-  addSheet(wb,used,"المستخدمون",[IMP_HEAD,["example1@gmail.com","مثال: مينا جرجس","لا","المتابعة، التقارير",names[0]||"اسم الخدمة"],["example2@gmail.com","مثال: مريم سمير","نعم","الكل","الكل"]],[30,24,16,28,28]);
+  const v=cur(),c=v&&classesOf(v.id)[0];
+  addSheet(wb,used,"المستخدمون",[IMP_HEAD,["example1@gmail.com","مثال: مينا جرجس","لا","المتابعة، التقارير",v&&c?v.name+" / "+c.name:"اسم الخدمة / اسم الفصل"],["example2@gmail.com","مثال: مريم سمير","لا","المتابعة",v?v.name:"اسم الخدمة"],["example3@gmail.com","مثال: يوسف","نعم","الكل","الكل"]],[30,24,16,28,34]);
   const buf=await wb.xlsx.writeBuffer();
   await saveFile(new Blob([buf],{type:XLSX_MIME}),"servants-users-template.xlsx");
 }
@@ -500,53 +593,66 @@ function impView(){
   const stT={new:"جديد",upd:"تحديث",err:"خطأ"};
   const scT=o=>o.role==="admin"?"مدير":SCREENS.filter(([k])=>o.screens[k]).map(x=>x[1]).join("، ");
   return `<div class="card"><h2>استيراد مستخدمين دفعة واحدة</h2>
-  <div class="mut">الصق صفوفاً منسوخة من إكسيل (كل مستخدم في سطر)، أو اختر ملف إكسيل أو CSV. الأعمدة بالترتيب: <b>Gmail | الاسم | مدير؟ (نعم/لا) | الشاشات | الخدمات</b>. الشاشات: المتابعة، التقارير، الخدمات والخدام (أو «الكل»). الخدمات بأسمائها كما هي مكتوبة في التطبيق (أو «الكل»)، وافصل بين أكثر من واحد بفاصلة. إن تُركت الشاشات فارغة تُعطى «المتابعة» فقط. أنشئ الخدمات أولاً.</div>
+  <div class="mut">الصق صفوفاً منسوخة من إكسيل (كل مستخدم في سطر)، أو اختر ملف إكسيل أو CSV. الأعمدة بالترتيب: <b>Gmail | الاسم | مدير؟ (نعم/لا) | الشاشات | الخدمات والفصول</b>. الشاشات: المتابعة، التقارير، الخدمات والخدام (أو «الكل»). في العمود الأخير اكتب «اسم الخدمة» لكل فصولها، أو «اسم الخدمة / اسم الفصل» لفصل محدد (أو «الكل»)، وافصل بين أكثر من واحد بفاصلة. الأسماء كما هي مكتوبة في التطبيق. إن تُركت الشاشات فارغة تُعطى «المتابعة» فقط. أنشئ الخدمات والفصول أولاً.</div>
   <div class="bar"><button data-a="imptpl">تحميل قالب إكسيل</button><input type="file" id="impfile" accept=".xlsx,.csv,.txt" aria-label="ملف الاستيراد"></div>
-  <textarea id="imptxt" placeholder="example@gmail.com&#9;مينا جرجس&#9;لا&#9;المتابعة، التقارير&#9;فصل 1" aria-label="صفوف المستخدمين" dir="auto">${esc(ui.impText||"")}</textarea>
+  <textarea id="imptxt" placeholder="example@gmail.com&#9;مينا جرجس&#9;لا&#9;المتابعة، التقارير&#9;فصل 1 / أ" aria-label="صفوف المستخدمين" dir="auto">${esc(ui.impText||"")}</textarea>
   <div class="bar"><button data-a="impprev">معاينة</button>${rows?`<button class="pri" data-a="impgo"${ok.length?"":" disabled"}>استيراد ${ok.length} مستخدم</button>`:""}</div>
-  ${rows?(rows.length?`<div class="sc"><table><thead><tr><th>#</th><th>Gmail</th><th>الاسم</th><th>الصلاحية</th><th>الخدمات</th><th>الحالة</th></tr></thead><tbody>${rows.map(o=>`<tr><td>${o.n}</td><td dir="ltr">${esc(o.email)}</td><td>${esc(o.name)}</td><td>${esc(scT(o))}</td><td>${esc(o.role==="admin"?"الكل":o.svcNames.join("، "))}</td><td class="${o.status==="err"?"r-b":o.status==="upd"?"r-m":"r-g"}">${stT[o.status]}${o.msg?": "+esc(o.msg):""}</td></tr>`).join("")}</tbody></table></div><div class="mut">«تحديث» تعني أن البريد مسجَّل من قبل وستُستبدل صلاحياته بما في الجدول. الصفوف الخاطئة لا تُستورد.</div>`:'<div class="empty">لا توجد صفوف.</div>'):""}</div>`;
+  ${rows?(rows.length?`<div class="sc"><table><thead><tr><th>#</th><th>Gmail</th><th>الاسم</th><th>الصلاحية</th><th>الخدمات والفصول</th><th>الحالة</th></tr></thead><tbody>${rows.map(o=>`<tr><td>${o.n}</td><td dir="ltr">${esc(o.email)}</td><td>${esc(o.name)}</td><td>${esc(scT(o))}</td><td>${esc(o.role==="admin"?"الكل":o.items.join("، "))}</td><td class="${o.status==="err"?"r-b":o.status==="upd"?"r-m":"r-g"}">${stT[o.status]}${o.msg?": "+esc(o.msg):""}</td></tr>`).join("")}</tbody></table></div><div class="mut">«تحديث» تعني أن البريد مسجَّل من قبل وستُستبدل صلاحياته بما في الجدول. الصفوف الخاطئة لا تُستورد.</div>`:'<div class="empty">لا توجد صفوف.</div>'):""}</div>`;
 }
 
 /* ============================ events ============================ */
-const wpath=(sid,d)=>"services/"+sid+"/weeks/"+d;
-function writeCell(sid,d,vid,i,val){FB.set(wpath(sid,d),{cells:{[cellKey(vid,i)]:val}},true).catch(failMsg)}
-function writeCells(sid,d,obj){FB.set(wpath(sid,d),{cells:obj},true).catch(failMsg)}
+function writeCell(cl,d,vid,i,val){FB.set(wpath(cl.sid,cl.id,d),{cells:{[cellKey(vid,i)]:val}},true).catch(failMsg)}
+function writeCells(cl,d,obj){FB.set(wpath(cl.sid,cl.id,d),{cells:obj},true).catch(failMsg)}
 function readUserForm(idx){
   const q=f=>$app.querySelector(`[data-uf="${idx}"][data-f="${f}"]`);
-  const all=(f)=>[...$app.querySelectorAll(`[data-uf="${idx}"][data-f="${f}"]`)];
+  const all=f=>[...$app.querySelectorAll(`[data-uf="${idx}"][data-f="${f}"]`)];
   const screens={};SCREENS.forEach(([k])=>{const e=all("scr").find(x=>x.dataset.k===k);screens[k]=!!(e&&e.checked)});
+  const full=all("full").filter(x=>x.checked).map(x=>x.dataset.k);
+  const cc=all("cls").filter(x=>x.checked);
+  const classes=cc.map(x=>x.dataset.k);
+  const services=[...new Set([...full,...cc.map(x=>x.dataset.sid)])];
   const eml=q("email");
-  return{email:eml?eml.value.trim().toLowerCase():"",name:q("name").value.trim(),role:q("admin").checked?"admin":"user",active:q("active").checked,screens,services:all("svc").filter(x=>x.checked).map(x=>x.dataset.k)};
+  return{email:eml?eml.value.trim().toLowerCase():"",name:q("name").value.trim(),role:q("admin").checked?"admin":"user",active:q("active").checked,screens,full,classes,services};
 }
 $app.addEventListener("click",async e=>{
   const b=e.target.closest("[data-a]");if(!b||b.tagName==="INPUT"||b.tagName==="SELECT")return;
-  const a=b.dataset.a,id=b.dataset.id,v=cur();
+  const a=b.dataset.a,id=b.dataset.id,v=cur(),cl=curCls();
   if(a==="login"){ui.busy=true;render();try{await FB.signIn()}catch(x){ui.busy=false;if(!(x&&(x.code==="auth/popup-closed-by-user"||x.code==="auth/cancelled-popup-request")))flash("تعذر تسجيل الدخول: "+((x&&x.code)||"خطأ"));render();return}ui.busy=false;render();return}
   if(a==="logout"){
     if(Object.values(S.pend).some(Boolean)){flash("توجد تعديلات لم تُرفع بعد. اتصل بالإنترنت وانتظر ثم أعد المحاولة");return}
     try{await FB.signOutAndClear()}catch(x){}location.reload();return}
   if(a==="tab"){ui.tab=b.dataset.t;ui.del=null}
-  else if(a==="d"){ui.date=+b.dataset.n?addDays(ui.date,+b.dataset.n):today}
-  else if(a==="c"){const s=b.dataset.s,i=+b.dataset.i;writeCell(v.id,ui.date,s,i,(getState(v.id,ui.date,s,i)+1)%4);return}
-  else if(a==="col"){const i=+b.dataset.i,sv=servants(v.id),all=sv.every(s=>getState(v.id,ui.date,s.id,i)===1),o={};sv.forEach(s=>o[cellKey(s.id,i)]=all?0:1);writeCells(v.id,ui.date,o);return}
-  else if(a==="row"){const s=b.dataset.s,all=ITEMS.every((_,i)=>getState(v.id,ui.date,s,i)===1),o={};ITEMS.forEach((_,i)=>o[cellKey(s,i)]=all?0:1);writeCells(v.id,ui.date,o);return}
-  else if(a==="xl"){try{const r=await buildReport(v);await saveFile(r.blob,r.name)}catch(x){flash("تعذر إنشاء الملف: "+((x&&x.message)||"خطأ"))}return}
-  else if(a==="sel"){ui.sid=id;try{localStorage.setItem("servants_fb_sid",id)}catch(x){}}
-  else if(a==="as"){const n=$app.querySelector("#ns").value.trim();if(!n)return;const sid=uid();ui.sid=sid;try{localStorage.setItem("servants_fb_sid",sid)}catch(x){}FB.set("services/"+sid,{name:n,order:Date.now()}).catch(failMsg);S.svc[sid]={id:sid,name:n,order:Date.now()}}
-  else if(a==="av"){const l=$app.querySelector("#nv").value.split("\n").map(x=>x.trim()).filter(Boolean);if(!l.length)return;l.forEach((n,i)=>FB.set("services/"+v.id+"/servants/"+uid(),{name:n,order:Date.now()+i}).catch(failMsg));$app.querySelector("#nv").value=""}
-  else if(a==="sd"||a==="vd"||a==="ud"){ui.del=(a==="sd"?"s":a==="vd"?"v":"u")+id}
+  else if(a==="d"){ui.date=+b.dataset.n?addDays(ui.date,+b.dataset.n):fridayOnOrBefore(today)}
+  else if(a==="c"){if(!cl)return;const s=b.dataset.s,i=+b.dataset.i;writeCell(cl,ui.date,s,i,(getState(cl.id,ui.date,s,i)+1)%4);return}
+  else if(a==="col"){if(!cl)return;const i=+b.dataset.i,sv=servants(cl.id),all=sv.every(s=>getState(cl.id,ui.date,s.id,i)===1),o={};sv.forEach(s=>o[cellKey(s.id,i)]=all?0:1);writeCells(cl,ui.date,o);return}
+  else if(a==="row"){if(!cl)return;const s=b.dataset.s,all=ITEMS.every((_,i)=>getState(cl.id,ui.date,s,i)===1),o={};ITEMS.forEach((_,i)=>o[cellKey(s,i)]=all?0:1);writeCells(cl,ui.date,o);return}
+  else if(a==="xl"){try{const r=await buildReport(v,cl);await saveFile(r.blob,r.name)}catch(x){flash("تعذر إنشاء الملف: "+((x&&x.message)||"خطأ"))}return}
+  else if(a==="sel"){ui.sid=id;store("servants_fb_sid",id)}
+  else if(a==="csel"){ui.cid=id;store("servants_fb_cid",id)}
+  else if(a==="as"){const n=$app.querySelector("#ns").value.trim();if(!n)return;const sid=uid();ui.sid=sid;store("servants_fb_sid",sid);FB.set("services/"+sid,{name:n,order:Date.now()}).catch(failMsg);S.svc[sid]={id:sid,name:n,order:Date.now()}}
+  else if(a==="ac"){const n=$app.querySelector("#nc").value.trim();if(!n||!v)return;const cid=uid();ui.cid=cid;store("servants_fb_cid",cid);FB.set(cpath(v.id,cid),{name:n,order:Date.now()}).catch(failMsg);S.cls[cid]={id:cid,sid:v.id,name:n,order:Date.now()}}
+  else if(a==="av"){if(!cl)return;const l=$app.querySelector("#nv").value.split("\n").map(x=>x.trim()).filter(Boolean);if(!l.length)return;l.forEach((n,i)=>FB.set(spath(cl.sid,cl.id,uid()),{name:n,order:Date.now()+i,cid:cl.id}).catch(failMsg));$app.querySelector("#nv").value=""}
+  else if(a==="sd"||a==="cd"||a==="vd"||a==="ud"){ui.del=a[0]+id}
   else if(a==="dc"){ui.del=null}
   else if(a==="sx"){ui.del=null;
-    const paths=[...servants(id).map(s=>"services/"+id+"/servants/"+s.id),...Object.values(S.weeks).filter(w=>w.sid===id).map(w=>wpath(id,w.date)),"services/"+id];
+    const paths=[];
+    Object.values(S.cls).filter(c=>c.sid===id).forEach(c=>{
+      servants(c.id).forEach(s=>paths.push(spath(id,c.id,s.id)));
+      Object.values(S.weeks).filter(w=>w.cid===c.id).forEach(w=>paths.push(wpath(id,c.id,w.date)));
+      paths.push(cpath(id,c.id))});
+    paths.push("services/"+id);
     FB.delMany(paths).catch(failMsg)}
-  else if(a==="vx"){ui.del=null;FB.del("services/"+v.id+"/servants/"+id).catch(failMsg)}
+  else if(a==="cx"){ui.del=null;const c=S.cls[id];if(c){
+    const paths=[...servants(id).map(s=>spath(c.sid,id,s.id)),...Object.values(S.weeks).filter(w=>w.cid===id).map(w=>wpath(c.sid,id,w.date)),cpath(c.sid,id)];
+    FB.delMany(paths).catch(failMsg)}}
+  else if(a==="vx"){ui.del=null;if(cl)FB.del(spath(cl.sid,cl.id,id)).catch(failMsg)}
   else if(a==="ux"){const u=(ui._ulist||[])[+id];ui.del=null;if(u&&u.email!==ADMIN)FB.del("users/"+u.email).catch(failMsg)}
   else if(a==="uadd"||a==="usave"){
     const idx=a==="uadd"?"new":b.dataset.idx,f=readUserForm(idx);
     let email=f.email;if(a==="usave"){const u=(ui._ulist||[])[+idx];email=u&&u.email}
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email||"")){flash("اكتب بريداً إلكترونياً صحيحاً");return}
     if(email===ADMIN){f.role="admin";f.active=true}
-    FB.set("users/"+email,{email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services}).then(()=>flash(a==="uadd"?"تمت إضافة المستخدم":"تم الحفظ")).catch(failMsg);
+    FB.set("users/"+email,{email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services,full:f.full,classes:f.classes}).then(()=>flash(a==="uadd"?"تمت إضافة المستخدم":"تم الحفظ")).catch(failMsg);
     if(a==="uadd")render();
     return;
   }
@@ -554,7 +660,7 @@ $app.addEventListener("click",async e=>{
   else if(a==="imptpl"){try{await impTemplate()}catch(x){flash("تعذر إنشاء القالب: "+((x&&x.message)||"خطأ"))}return}
   else if(a==="impgo"){
     const good=(ui.imp||[]).filter(r=>r.status!=="err");
-    good.forEach(o=>{const old=S.users[o.email];FB.set("users/"+o.email,{email:o.email,name:o.name,role:o.role,active:old?old.active!==false:true,screens:o.screens,services:o.services}).catch(failMsg)});
+    good.forEach(o=>{const old=S.users[o.email];FB.set("users/"+o.email,{email:o.email,name:o.name,role:o.role,active:old?old.active!==false:true,screens:o.screens,services:o.services,full:o.full,classes:o.classes}).catch(failMsg)});
     ui.imp=null;ui.impText="";flash("تم استيراد "+good.length+" مستخدم");return}
   else if(a==="inst"){if(deferredInstall){deferredInstall.prompt();try{await deferredInstall.userChoice}catch(x){}deferredInstall=null}}
   render();
@@ -564,12 +670,14 @@ $app.addEventListener("change",e=>{
   if(t.id==="impfile"){readImpFile(t.files&&t.files[0]);return}
   if(t.id==="imptxt"){ui.impText=t.value;return}
   if(t.dataset.uf)return;
-  if(t.id==="sv"){ui.sid=t.value;try{localStorage.setItem("servants_fb_sid",t.value)}catch(x){}}
+  if(t.id==="sv"){ui.sid=t.value;store("servants_fb_sid",t.value);ui.cid=null}
+  else if(t.id==="cl"){ui.cid=t.value;store("servants_fb_cid",t.value)}
   else if(t.id==="dt"){if(t.value)ui.date=t.value}
   else if(t.id==="per"){ui.per=t.value}else if(t.id==="scope"){ui.scope=t.value}
   else if(t.id==="mo"){if(t.value)ui.month=t.value}else if(t.id==="yr"){if(t.value)ui.year=String(t.value)}
   else if(a==="sn"){const val=t.value.trim();if(val)FB.set("services/"+t.dataset.id,{name:val},true).catch(failMsg)}
-  else if(a==="vn"){const val=t.value.trim(),v=cur();if(val&&v)FB.set("services/"+v.id+"/servants/"+t.dataset.id,{name:val},true).catch(failMsg)}
+  else if(a==="cn"){const val=t.value.trim(),c=S.cls[t.dataset.id];if(val&&c)FB.set(cpath(c.sid,c.id),{name:val},true).catch(failMsg)}
+  else if(a==="vn"){const val=t.value.trim(),c=curCls();if(val&&c)FB.set(spath(c.sid,c.id,t.dataset.id),{name:val},true).catch(failMsg)}
   else return;
   render();
 });
@@ -587,7 +695,7 @@ if(configured){
     FB.onAuth(u=>{
       S.authReady=true;S.user=u;S.bootstrapped=false;
       if(u&&u.verified===false){S.user=null;flash("بريد Google غير موثّق")}
-      if(S.user)startSession();else{unsubAll();S.me=undefined;S.svc={};S.srv={};S.weeks={};S.users={}}
+      if(S.user)startSession();else{unsubAll();S.me=undefined;S.svc={};S.cls={};S.srv={};S.weeks={};S.users={}}
       render();
     });
   }catch(e){S.authReady=true;S.err="تعذر تهيئة Firebase: "+((e&&e.message)||"");render()}
