@@ -84,6 +84,13 @@ h3{font-size:14px;margin:4px 0 0;color:var(--mut);font-weight:600}
 .badge{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--head);color:var(--mut)}
 code.ltr{direction:ltr;unicode-bidi:isolate;display:block;padding:8px 10px;background:var(--head);border-radius:8px;overflow-wrap:anywhere;font-size:13px;text-align:left}
 .big{font-size:17px;min-height:52px}
+td.c button.lk{cursor:not-allowed;box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)}
+.spacer{height:170px}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--card);border-top:1px solid var(--line);box-shadow:0 -8px 24px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:10px;padding:14px max(16px,env(safe-area-inset-left,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
+.sheet .opts{display:flex;gap:8px}
+.sheet .opts button{flex:1;min-height:54px;font-size:17px;font-weight:700;border-color:transparent}
+.sheet button.ok{background:var(--ok-bg);color:var(--ok-fg)}.sheet button.no{background:var(--no-bg);color:var(--no-fg)}.sheet button.ex{background:var(--ex-bg);color:var(--ex-fg)}.sheet button.tel{background:var(--tel-bg);color:var(--tel-fg)}
+.sheet button.pri{background:var(--accent);color:var(--on-accent)}
 [hidden]{display:none!important}
 .seg{display:flex;gap:6px}.seg button{flex:1}
 .urow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:right;min-height:58px;padding:8px 12px}
@@ -134,7 +141,7 @@ const configured=!placeholder(CFG.apiKey)&&!placeholder(CFG.projectId)&&!placeho
 /* ============================ state ============================ */
 /* الهرم: خدمة (svc) ← فصل (cls) ← خادم (srv). سجلات المتابعة (weeks) تخص الفصل. */
 const S={user:null,authReady:false,me:undefined,svc:{},cls:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine};
-const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:"",uedit:null,usub:"list",ef:null,efFor:null,q:"",sq:"",srvSub:"struct",openS:{}};
+const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:"",uedit:null,usub:"list",ef:null,efFor:null,q:"",sq:"",pick:null,bulk:null,srvSub:"struct",openS:{}};
 try{ui.sid=localStorage.getItem("servants_fb_sid");ui.cid=localStorage.getItem("servants_fb_cid")}catch(e){}
 const store=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const subs={};
@@ -144,6 +151,7 @@ const isOwner=()=>!!S.user&&!!ADMIN&&S.user.email===ADMIN;
 const isAdmin=()=>!!S.user&&(isOwner()||!!(S.me&&S.me.active!==false&&S.me.role==="admin"));
 const isActive=()=>isOwner()||!!(S.me&&S.me.active!==false);
 const can=sc=>isAdmin()||!!(isActive()&&S.me&&S.me.screens&&S.me.screens[sc]);
+const canEditRec=()=>isAdmin()||!!(isActive()&&S.me&&S.me.editor===true);
 const mFull=()=>(S.me&&S.me.full)||[];
 const mCls=()=>(S.me&&S.me.classes)||[];
 const mSvcs=()=>(S.me&&S.me.services)||[];
@@ -264,7 +272,7 @@ function startSession(){
     setPend("me",m);const first=S.me===undefined;S.me=d;
     if(!d&&isOwner()&&first&&!S.bootstrapped){
       S.bootstrapped=true;
-      FB.set("users/"+S.user.email,{email:S.user.email,name:S.user.name||"المدير",role:"admin",active:true,screens:{rec:true,rep:true,srv:true},services:[],full:[],classes:[]}).catch(dbErr);
+      FB.set("users/"+S.user.email,{editor:true,email:S.user.email,name:S.user.name||"المدير",role:"admin",active:true,screens:{rec:true,rep:true,srv:true},services:[],full:[],classes:[]}).catch(dbErr);
     }
     S.err="";reconcile();paint();
   },dbErr);
@@ -303,8 +311,8 @@ function installCard(){
   if(deferredInstall)return `<div class="card"><h2>تثبيت التطبيق</h2><div class="mut">ثبّت التطبيق ليظهر بأيقونة على الشاشة الرئيسية.</div><div><button class="pri" data-a="inst">تثبيت التطبيق</button></div></div>`;
   return `<div class="card"><h2>تثبيت التطبيق</h2><div class="mut">${isIOS?"في Safari: اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».":"في Chrome: افتح القائمة (⋮) ثم «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»."}</div></div>`;
 }
-function stateBtn(i,s,attrs,label){
-  const c=stCls(i,s);return `<button class="${c}" ${attrs} aria-label="${esc(label)}">${ITEMS[i].sym[s]||"&nbsp;"}</button>`;
+function stateBtn(i,s,attrs,label,lock){
+  const c=stCls(i,s)+(lock&&s?" lk":"");return `<button class="${c}" ${attrs} aria-label="${esc(label)}">${ITEMS[i].sym[s]||"&nbsp;"}</button>`;
 }
 function fridayOptions(){
   const base=fridayOnOrBefore(today),l=[];
@@ -320,10 +328,10 @@ function recView(v,cl){
   if(!sv.length)return `<div class="card empty">لا يوجد خدام في هذا الفصل بعد.${can("srv")?" أضفهم من تبويب «الخدمات والخدام».":""}</div>`;
   const st=stats(cl.id,d=>d===ui.date);
   let h=`<div class="card"><div class="bar"><button data-a="d" data-n="-7">الجمعة السابقة</button><select id="dt" aria-label="الجمعة">${fridayOptions()}</select><button data-a="d" data-n="7">الجمعة التالية</button><button data-a="d" data-n="0">آخر جمعة</button></div>
-  <div class="mut">المتابعة تُسجَّل ليوم الجمعة من كل أسبوع. اضغط على الخانة لتتبدل بين الحالات. للقداس والتحضير والخدمة والاجتماع: ✔ ثم ✘ ثم عذر. للإفتقاد: تليفون ثم زيارة ثم X. اضغط اسم البند أو اسم الخادم لتحديد الكل.</div>
+  <div class="mut">${canEditRec()?"":"🔒 بعد التسجيل تُقفل الخانة ولا يعدّلها إلا من لديه صلاحية التعديل. "}المتابعة تُسجَّل ليوم الجمعة من كل أسبوع. ${canEditRec()?"اضغط على الخانة لتتبدل بين الحالات.":"اضغط على خانة فارغة لاختيار الحالة."} للقداس والتحضير والخدمة والاجتماع: ✔ ثم ✘ ثم عذر. للإفتقاد: تليفون ثم زيارة ثم X. اضغط اسم البند أو اسم الخادم لتحديد الكل.</div>
   <div class="sc"><table><thead><tr><th class="nm">الخادم</th>${ITEMS.map((x,i)=>`<th data-a="col" data-i="${i}">${x.n}</th>`).join("")}<th>النسبة</th></tr></thead><tbody>`;
   sv.forEach((s,k)=>{
-    h+=`<tr><td class="nm" data-a="row" data-s="${s.id}">${esc(s.name)}</td>`+ITEMS.map((_,i)=>`<td class="c">${stateBtn(i,getState(cl.id,ui.date,s.id,i),`data-a="c" data-s="${s.id}" data-i="${i}"`,s.name+" "+ITEMS[i].n)}</td>`).join("")+`<td>${pc(st[k].p)}</td></tr>`;
+    h+=`<tr><td class="nm" data-a="row" data-s="${s.id}">${esc(s.name)}</td>`+ITEMS.map((_,i)=>`<td class="c">${stateBtn(i,getState(cl.id,ui.date,s.id,i),`data-a="c" data-s="${s.id}" data-i="${i}"`,s.name+" "+ITEMS[i].n,!canEditRec())}</td>`).join("")+`<td>${pc(st[k].p)}</td></tr>`;
   });
   h+=`</tbody><tfoot><tr><td class="nm">الملتزمون</td>${ITEMS.map((_,i)=>i===1?`<td>ت ${st.reduce((s,o)=>s+o.cnt[1][1],0)} · ز ${st.reduce((s,o)=>s+o.cnt[1][2],0)}</td>`:`<td>${st.reduce((s,o)=>s+o.cnt[i][1],0)}</td>`).join("")}<td>${pc(avg(st.map(o=>o.p)))}</td></tr></tfoot></table></div></div>`;
   return h;
@@ -397,6 +405,7 @@ function userForm(u,key,isNew){
   <div class="grid">
     <label class="chk"><input type="checkbox" data-uf="${key}" data-f="admin"${u.role==="admin"?" checked":""}${locked?" disabled":""}> مدير (يرى كل شيء)</label>
     <label class="chk"><input type="checkbox" data-uf="${key}" data-f="active"${u.active!==false?" checked":""}${locked?" disabled":""}> الحساب مفعّل</label>
+    <label class="chk"><input type="checkbox" data-uf="${key}" data-f="editor"${u.editor?" checked":""}${locked?" disabled":""}> يمكنه تعديل ما سُجِّل (فك القفل)</label>
   </div>
   <h3>الشاشات المسموحة</h3>
   <div class="grid">${SCREENS.map(([k,n])=>`<label class="chk"><input type="checkbox" data-uf="${key}" data-f="scr" data-k="${k}"${sc[k]?" checked":""}> ${n}</label>`).join("")}</div>
@@ -407,12 +416,13 @@ function userForm(u,key,isNew){
 }
 function accessText(u){
   if(u.role==="admin")return "مدير: كل شيء";
+  const ed=u.editor?" — يعدّل المسجَّل":"";
   const full=u.full||[],cs=u.classes||[],parts=[];
   svcList().forEach(x=>{
     if(full.includes(x.id))parts.push(x.name+" (كل الفصول)");
     else{const n=classesOf(x.id).filter(c=>cs.includes(ckey(x.id,c.id))).map(c=>c.name);if(n.length)parts.push(x.name+": "+n.join("، "))}
   });
-  return parts.join(" — ")||"لا توجد خدمات";
+  return (parts.join(" — ")||"لا توجد خدمات")+ed;
 }
 function editUserView(){
   const isNew=ui.uedit==="new";
@@ -428,7 +438,7 @@ function usrView(){
   const base=location.origin+location.pathname.replace(/index\.html$/,"");
   return `<div class="card"><div class="bar"><input type="search" id="uq" value="${esc(ui.q)}" placeholder="بحث بالاسم أو البريد" aria-label="بحث" style="flex:1;min-width:0"><button class="pri" data-a="unew">+ مستخدم</button></div>
   <div class="bar"><button data-a="uimp">استيراد من إكسيل</button><span class="mut">${list.length} مستخدم</span></div>
-  ${list.map(u=>{const nm=(u.name||"")+" "+u.email;return `<button class="urow" data-a="uedit" data-email="${esc(u.email)}" data-nm="${esc(nm)}"${q&&!nm.toLowerCase().includes(q)?" hidden":""}><span><b>${esc(u.name||u.email)}</b>${u.role==="admin"?' <span class="badge">مدير</span>':""}${u.active===false?' <span class="badge">موقوف</span>':""}</span><span class="em">${esc(u.email)}</span><span class="mut">${esc(accessText(u))}</span></button>`}).join("")||'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>
+  ${list.map(u=>{const nm=(u.name||"")+" "+u.email;return `<button class="urow" data-a="uedit" data-email="${esc(u.email)}" data-nm="${esc(nm)}"${q&&!nm.toLowerCase().includes(q)?" hidden":""}><span><b>${esc(u.name||u.email)}</b>${u.role==="admin"?' <span class="badge">مدير</span>':""}${u.editor&&u.role!=="admin"?' <span class="badge">يعدّل</span>':""}${u.active===false?' <span class="badge">موقوف</span>':""}</span><span class="em">${esc(u.email)}</span><span class="mut">${esc(accessText(u))}</span></button>`}).join("")||'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>
   <div class="card"><h2>رابط التطبيق</h2><div class="mut">أرسل هذا الرابط للمستخدمين. بعد إضافة بريد المستخدم يدخل به بحساب Google.</div><code class="ltr">${esc(base)}</code></div>`;
 }
 function accView(){
@@ -457,7 +467,18 @@ function mainView(){
     <span class="chip ${ci.c}" id="chip">${ci.t}</span></div>
     <div class="tabs">${tabs.map(t=>`<button data-a="tab" data-t="${t[0]}" class="${ui.tab===t[0]?"on":""}">${t[1]}</button>`).join("")}</div>
     ${ui.msg?`<div class="msg" role="status">${esc(ui.msg)}</div>`:""}
-    ${S.err?`<div class="warn">${esc(S.err)}</div>`:""}${body}</div>`;
+    ${S.err?`<div class="warn">${esc(S.err)}</div>`:""}${body}${sheetView()}</div>`;
+}
+function sheetView(){
+  if(ui.tab!=="rec")return "";
+  if(ui.pick){
+    const sv=S.srv[ui.pick.s],i=ui.pick.i;if(!sv)return "";
+    return `<div class="spacer"></div><div class="sheet" role="dialog" aria-label="اختيار الحالة"><div><b>${esc(sv.name)}</b> — ${ITEMS[i].n}<div class="mut">بعد الحفظ لا يمكن تعديل الخانة.</div></div>
+    <div class="opts">${[1,2,3].map(st=>`<button class="${stCls(i,st)}" data-a="pk" data-v="${st}">${ITEMS[i].sym[st]}</button>`).join("")}</div><button data-a="pkx">إلغاء</button></div>`;
+  }
+  if(ui.bulk)return `<div class="spacer"></div><div class="sheet" role="dialog"><div>سيُسجَّل <b>${esc(ui.bulk.label)}</b> في ${ui.bulk.keys.length} خانة فارغة فقط، ولا يمكن تعديلها بعد ذلك.</div>
+    <div class="opts"><button class="pri" data-a="bk">تأكيد التسجيل</button><button data-a="pkx">إلغاء</button></div></div>`;
+  return "";
 }
 function render(){
   if(ui.uedit&&$app.querySelector('[data-uf="f"][data-f="name"]')){try{ui.ef=readUserForm("f");ui.efFor=ui.uedit}catch(e){}}
@@ -636,8 +657,8 @@ function impView(){
 }
 
 /* ============================ events ============================ */
-function writeCell(cl,d,vid,i,val){FB.set(wpath(cl.sid,cl.id,d),{cells:{[cellKey(vid,i)]:val}},true).catch(failMsg)}
-function writeCells(cl,d,obj){FB.set(wpath(cl.sid,cl.id,d),{cells:obj},true).catch(failMsg)}
+function writeCell(cl,d,vid,i,val){FB.set(wpath(cl.sid,cl.id,d),{cells:{[cellKey(vid,i)]:val||null}},true).catch(failMsg)}
+function writeCells(cl,d,obj){const o={};for(const k in obj)o[k]=obj[k]||null;FB.set(wpath(cl.sid,cl.id,d),{cells:o},true).catch(failMsg)}
 function readUserForm(idx){
   const q=f=>$app.querySelector(`[data-uf="${idx}"][data-f="${f}"]`);
   const all=f=>[...$app.querySelectorAll(`[data-uf="${idx}"][data-f="${f}"]`)];
@@ -647,7 +668,7 @@ function readUserForm(idx){
   const classes=cc.map(x=>x.dataset.k);
   const services=[...new Set([...full,...cc.map(x=>x.dataset.sid)])];
   const eml=q("email");
-  return{email:eml?eml.value.trim().toLowerCase():"",name:q("name").value.trim(),role:q("admin").checked?"admin":"user",active:q("active").checked,screens,full,classes,services};
+  return{editor:!!(q("editor")&&q("editor").checked),email:eml?eml.value.trim().toLowerCase():"",name:q("name").value.trim(),role:q("admin").checked?"admin":"user",active:q("active").checked,screens,full,classes,services};
 }
 $app.addEventListener("click",async e=>{
   const b=e.target.closest("[data-a]");if(!b||b.tagName==="INPUT"||b.tagName==="SELECT")return;
@@ -658,9 +679,23 @@ $app.addEventListener("click",async e=>{
     try{await FB.signOutAndClear()}catch(x){}location.reload();return}
   if(a==="tab"){ui.tab=b.dataset.t;ui.del=null}
   else if(a==="d"){ui.date=+b.dataset.n?addDays(ui.date,+b.dataset.n):fridayOnOrBefore(today)}
-  else if(a==="c"){if(!cl)return;const s=b.dataset.s,i=+b.dataset.i;writeCell(cl,ui.date,s,i,(getState(cl.id,ui.date,s,i)+1)%4);return}
-  else if(a==="col"){if(!cl)return;const i=+b.dataset.i,sv=servants(cl.id),all=sv.every(s=>getState(cl.id,ui.date,s.id,i)===1),o={};sv.forEach(s=>o[cellKey(s.id,i)]=all?0:1);writeCells(cl,ui.date,o);return}
-  else if(a==="row"){if(!cl)return;const s=b.dataset.s,all=ITEMS.every((_,i)=>getState(cl.id,ui.date,s,i)===1),o={};ITEMS.forEach((_,i)=>o[cellKey(s,i)]=all?0:1);writeCells(cl,ui.date,o);return}
+  else if(a==="c"){if(!cl)return;const s=b.dataset.s,i=+b.dataset.i,cv=getState(cl.id,ui.date,s,i);
+    if(canEditRec()){writeCell(cl,ui.date,s,i,(cv+1)%4);return}
+    if(cv!==0){flash("هذه الخانة مسجَّلة ولا يمكن تعديلها. اطلب ذلك ممن لديه صلاحية التعديل");return}
+    ui.pick={s,i};ui.bulk=null}
+  else if(a==="pk"){if(cl&&ui.pick){writeCell(cl,ui.date,ui.pick.s,ui.pick.i,+b.dataset.v)}ui.pick=null}
+  else if(a==="pkx"){ui.pick=null;ui.bulk=null}
+  else if(a==="bk"){if(cl&&ui.bulk){const o={};ui.bulk.keys.forEach(k=>o[k]=1);writeCells(cl,ui.date,o)}ui.bulk=null}
+  else if(a==="col"){if(!cl)return;const i=+b.dataset.i,sv=servants(cl.id);
+    if(canEditRec()){const all=sv.every(s=>getState(cl.id,ui.date,s.id,i)===1),o={};sv.forEach(s=>o[cellKey(s.id,i)]=all?0:1);writeCells(cl,ui.date,o);return}
+    const keys=sv.filter(s=>getState(cl.id,ui.date,s.id,i)===0).map(s=>cellKey(s.id,i));
+    if(!keys.length){flash("كل خانات هذا البند مسجَّلة");return}
+    ui.bulk={keys,label:ITEMS[i].sym[1]+" في بند «"+ITEMS[i].n+"»"};ui.pick=null}
+  else if(a==="row"){if(!cl)return;const s=b.dataset.s;
+    if(canEditRec()){const all=ITEMS.every((_,i)=>getState(cl.id,ui.date,s,i)===1),o={};ITEMS.forEach((_,i)=>o[cellKey(s,i)]=all?0:1);writeCells(cl,ui.date,o);return}
+    const keys=ITEMS.map((_,i)=>i).filter(i=>getState(cl.id,ui.date,s,i)===0).map(i=>cellKey(s,i));
+    if(!keys.length){flash("كل خانات هذا الخادم مسجَّلة");return}
+    ui.bulk={keys,label:"✔ (وتليفون للإفتقاد) لـ "+((S.srv[s]||{}).name||"")};ui.pick=null}
   else if(a==="xl"){try{const r=await buildReport(v,cl);await saveFile(r.blob,r.name)}catch(x){flash("تعذر إنشاء الملف: "+((x&&x.message)||"خطأ"))}return}
   else if(a==="sel"){ui.sid=id;store("servants_fb_sid",id)}
   else if(a==="csel"){ui.cid=id;store("servants_fb_cid",id)}
@@ -692,14 +727,14 @@ $app.addEventListener("click",async e=>{
     const email=a==="uadd"?f.email:ui.uedit;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email||"")){flash("اكتب بريداً إلكترونياً صحيحاً");return}
     if(email===ADMIN){f.role="admin";f.active=true}
-    FB.set("users/"+email,{email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services,full:f.full,classes:f.classes}).catch(failMsg);
+    FB.set("users/"+email,{editor:!!f.editor,email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services,full:f.full,classes:f.classes}).catch(failMsg);
     const wasNew=a==="uadd";ui.uedit=null;ui.ef=null;flash(wasNew?"تمت إضافة المستخدم":"تم الحفظ");return;
   }
   else if(a==="impprev"){ui.impText=($app.querySelector("#imptxt")||{}).value||ui.impText;ui.imp=analyzeImport(ui.impText)}
   else if(a==="imptpl"){try{await impTemplate()}catch(x){flash("تعذر إنشاء القالب: "+((x&&x.message)||"خطأ"))}return}
   else if(a==="impgo"){
     const good=(ui.imp||[]).filter(r=>r.status!=="err");
-    good.forEach(o=>{const old=S.users[o.email];FB.set("users/"+o.email,{email:o.email,name:o.name,role:o.role,active:old?old.active!==false:true,screens:o.screens,services:o.services,full:o.full,classes:o.classes}).catch(failMsg)});
+    good.forEach(o=>{const old=S.users[o.email];FB.set("users/"+o.email,{editor:old?old.editor===true:false,email:o.email,name:o.name,role:o.role,active:old?old.active!==false:true,screens:o.screens,services:o.services,full:o.full,classes:o.classes}).catch(failMsg)});
     ui.imp=null;ui.impText="";flash("تم استيراد "+good.length+" مستخدم");return}
   else if(a==="inst"){if(deferredInstall){deferredInstall.prompt();try{await deferredInstall.userChoice}catch(x){}deferredInstall=null}}
   render();
