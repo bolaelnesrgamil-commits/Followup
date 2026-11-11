@@ -84,6 +84,13 @@ h3{font-size:14px;margin:4px 0 0;color:var(--mut);font-weight:600}
 .badge{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--head);color:var(--mut)}
 code.ltr{direction:ltr;unicode-bidi:isolate;display:block;padding:8px 10px;background:var(--head);border-radius:8px;overflow-wrap:anywhere;font-size:13px;text-align:left}
 .big{font-size:17px;min-height:52px}
+[hidden]{display:none!important}
+.seg{display:flex;gap:6px}.seg button{flex:1}
+.urow{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:right;min-height:58px;padding:8px 12px}
+.urow .em{direction:ltr;unicode-bidi:isolate;font-size:13px;color:var(--mut)}
+details{border:1px solid var(--line);border-radius:8px;padding:2px 10px}
+details>summary{cursor:pointer;min-height:42px;display:flex;align-items:center;gap:8px;list-style-position:inside}
+details[open]>summary{border-bottom:1px solid var(--line);margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -127,7 +134,7 @@ const configured=!placeholder(CFG.apiKey)&&!placeholder(CFG.projectId)&&!placeho
 /* ============================ state ============================ */
 /* الهرم: خدمة (svc) ← فصل (cls) ← خادم (srv). سجلات المتابعة (weeks) تخص الفصل. */
 const S={user:null,authReady:false,me:undefined,svc:{},cls:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine};
-const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:""};
+const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:"",uedit:null,usub:"list",ef:null,efFor:null,q:"",sq:"",srvSub:"struct",openS:{}};
 try{ui.sid=localStorage.getItem("servants_fb_sid");ui.cid=localStorage.getItem("servants_fb_cid")}catch(e){}
 const store=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const subs={};
@@ -357,45 +364,72 @@ function repView(v,cl){
 function delBtn(k,id){return ui.del===k+id?`<button class="dng" data-a="${k}x" data-id="${id}">تأكيد الحذف</button><button data-a="dc">إلغاء</button>`:`<button class="dng" data-a="${k}d" data-id="${id}">حذف</button>`}
 function srvView(v,cl){
   const admin=isAdmin();
-  const sv=cl?servants(cl.id):[];
-  const cls=v?classesOf(v.id):[];
-  return `${admin?`<div class="card"><h2>الخدمات</h2><div class="mut">الخدمة هي المرحلة، ولها فصول، ولكل فصل خدامه وسجلاته.</div>
+  const sub=admin?ui.srvSub:"serv";
+  const seg=admin?`<div class="seg"><button data-a="ssub" data-v="struct" class="${sub==="struct"?"on":""}">الخدمات والفصول</button><button data-a="ssub" data-v="serv" class="${sub==="serv"?"on":""}">الخدام</button></div>`:"";
+  if(sub==="struct"){
+    const cls=v?classesOf(v.id):[];
+    return seg+`<div class="card"><h2>الخدمات</h2><div class="mut">الخدمة هي المرحلة، ولها فصول، ولكل فصل خدامه وسجلاته.</div>
   ${svcList().map(x=>`<div class="row"><input data-a="sn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الخدمة"><button data-a="sel" data-id="${x.id}" class="${v&&x.id===v.id?"on":""}">${v&&x.id===v.id?"الحالية":"اختيار"}</button>${delBtn("s",x.id)}</div>`).join("")}
   <div class="row"><input id="ns" placeholder="اسم خدمة جديدة" aria-label="اسم خدمة جديدة"><button class="pri" data-a="as">إضافة خدمة</button></div></div>
   ${v?`<div class="card"><h2>فصول «${esc(v.name)}»</h2>
   ${cls.map(x=>`<div class="row"><input data-a="cn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الفصل"><button data-a="csel" data-id="${x.id}" class="${cl&&x.id===cl.id?"on":""}">${cl&&x.id===cl.id?"الحالي":"اختيار"}</button>${delBtn("c",x.id)}</div>`).join("")||'<div class="mut">لا توجد فصول بعد.</div>'}
-  <div class="row"><input id="nc" placeholder="اسم فصل جديد" aria-label="اسم فصل جديد"><button class="pri" data-a="ac">إضافة فصل</button></div></div>`:""}`:""}
-  ${cl?`<div class="card"><h2>خدام «${esc(v.name)} - ${esc(cl.name)}»</h2>
-  ${sv.map(x=>`<div class="row"><input data-a="vn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الخادم">${delBtn("v",x.id)}</div>`).join("")}
-  <div class="mut">إضافة أسماء (اسم في كل سطر):</div><textarea id="nv" placeholder="مينا جرجس&#10;مريم سمير" aria-label="أسماء الخدام"></textarea><div><button class="pri" data-a="av">إضافة الأسماء</button></div></div>`:`<div class="card empty">${!v?(admin?"أضف خدمة أولاً.":"لا توجد خدمة مسموح لك بها."):(admin?"أضف فصلاً لهذه الخدمة أولاً.":"لا يوجد فصل مسموح لك به.")}</div>`}`;
+  <div class="row"><input id="nc" placeholder="اسم فصل جديد" aria-label="اسم فصل جديد"><button class="pri" data-a="ac">إضافة فصل</button></div></div>`:""}`;
+  }
+  if(!cl)return seg+`<div class="card empty">${!v?(admin?"أضف خدمة أولاً.":"لا توجد خدمة مسموح لك بها."):(admin?"أضف فصلاً لهذه الخدمة أولاً من «الخدمات والفصول».":"لا يوجد فصل مسموح لك به.")}</div>`;
+  const sv=servants(cl.id),q=(ui.sq||"").trim().toLowerCase();
+  return seg+`<div class="card"><h2>خدام «${esc(v.name)} - ${esc(cl.name)}» <span class="badge">${sv.length}</span></h2>
+  <div class="mut">إضافة أسماء (اسم في كل سطر):</div><textarea id="nv" placeholder="مينا جرجس&#10;مريم سمير" aria-label="أسماء الخدام"></textarea><div><button class="pri" data-a="av">إضافة الأسماء</button></div></div>
+  <div class="card">${sv.length?`<input type="search" id="sq" value="${esc(ui.sq)}" placeholder="بحث عن خادم" aria-label="بحث عن خادم">`:""}
+  ${sv.map(x=>`<div class="row" data-nm="${esc(x.name)}"${q&&!x.name.toLowerCase().includes(q)?" hidden":""}><input data-a="vn" data-id="${x.id}" value="${esc(x.name)}" aria-label="اسم الخادم">${delBtn("v",x.id)}</div>`).join("")||'<div class="empty">لا يوجد خدام بعد.</div>'}</div>`;
 }
-function userForm(u,idx,isNew){
+function userForm(u,key,isNew){
   const sc=u.screens||{},full=new Set(u.full||[]),cs=new Set(u.classes||[]);
   const locked=!isNew&&u.email===ADMIN;
-  const access=svcList().map(x=>`<div class="chk"><label class="chk"><input type="checkbox" data-uf="${idx}" data-f="full" data-k="${x.id}"${full.has(x.id)?" checked":""}> <b>${esc(x.name)}</b> (كل الفصول)</label></div>`+
-    classesOf(x.id).map(c=>`<label class="chk" style="padding-inline-start:26px"><input type="checkbox" data-uf="${idx}" data-f="cls" data-sid="${x.id}" data-k="${ckey(x.id,c.id)}"${cs.has(ckey(x.id,c.id))?" checked":""}> ${esc(c.name)}</label>`).join("")).join("");
+  const access=svcList().map(x=>{
+    const cls=classesOf(x.id),n=full.has(x.id)?cls.length:cls.filter(c=>cs.has(ckey(x.id,c.id))).length;
+    const open=ui.openS[x.id]!==undefined?ui.openS[x.id]:(full.has(x.id)||n>0);
+    return `<details data-sid="${x.id}"${open?" open":""}><summary><b>${esc(x.name)}</b> <span class="badge">${full.has(x.id)?"كل الفصول":n?n+" فصل":"بدون"}</span></summary>
+    <label class="chk"><input type="checkbox" data-uf="${key}" data-f="full" data-k="${x.id}"${full.has(x.id)?" checked":""}> كل الفصول (تشمل أي فصل يُضاف لاحقاً)</label>`+
+    cls.map(c=>`<label class="chk" style="padding-inline-start:20px"><input type="checkbox" data-uf="${key}" data-f="cls" data-sid="${x.id}" data-k="${ckey(x.id,c.id)}"${cs.has(ckey(x.id,c.id))?" checked":""}> ${esc(c.name)}</label>`).join("")+`</details>`}).join("");
   return `<div class="ucard">
-  ${isNew?`<input data-uf="${idx}" data-f="email" dir="ltr" placeholder="البريد الإلكتروني (Gmail) للمستخدم" style="text-align:left" aria-label="البريد الإلكتروني">`:`<div class="bar"><b dir="ltr">${esc(u.email)}</b>${locked?'<span class="badge">مدير النظام</span>':""}</div>`}
-  <input data-uf="${idx}" data-f="name" value="${esc(u.name||"")}" placeholder="الاسم" aria-label="الاسم">
+  ${isNew?`<input data-uf="${key}" data-f="email" dir="ltr" value="${esc(u.email||"")}" placeholder="البريد الإلكتروني (Gmail) للمستخدم" style="text-align:left" aria-label="البريد الإلكتروني">`:`<div class="bar"><b dir="ltr">${esc(u.email)}</b>${locked?'<span class="badge">مدير النظام</span>':""}</div>`}
+  <input data-uf="${key}" data-f="name" value="${esc(u.name||"")}" placeholder="الاسم" aria-label="الاسم">
   <div class="grid">
-    <label class="chk"><input type="checkbox" data-uf="${idx}" data-f="admin"${u.role==="admin"?" checked":""}${locked?" disabled":""}> مدير (يرى كل شيء)</label>
-    <label class="chk"><input type="checkbox" data-uf="${idx}" data-f="active"${u.active!==false?" checked":""}${locked?" disabled":""}> الحساب مفعّل</label>
+    <label class="chk"><input type="checkbox" data-uf="${key}" data-f="admin"${u.role==="admin"?" checked":""}${locked?" disabled":""}> مدير (يرى كل شيء)</label>
+    <label class="chk"><input type="checkbox" data-uf="${key}" data-f="active"${u.active!==false?" checked":""}${locked?" disabled":""}> الحساب مفعّل</label>
   </div>
   <h3>الشاشات المسموحة</h3>
-  <div class="grid">${SCREENS.map(([k,n])=>`<label class="chk"><input type="checkbox" data-uf="${idx}" data-f="scr" data-k="${k}"${sc[k]?" checked":""}> ${n}</label>`).join("")}</div>
+  <div class="grid">${SCREENS.map(([k,n])=>`<label class="chk"><input type="checkbox" data-uf="${key}" data-f="scr" data-k="${k}"${sc[k]?" checked":""}> ${n}</label>`).join("")}</div>
   <h3>الخدمات والفصول المسموحة</h3>
-  <div>${access||'<span class="mut">لا توجد خدمات بعد.</span>'}</div>
-  <div class="mut">«كل الفصول» تشمل أي فصل يُضاف لاحقاً. المدير يرى كل شيء بغض النظر عن هذه الخيارات.</div>
-  <div class="bar"><button class="pri" data-a="${isNew?"uadd":"usave"}" data-idx="${idx}">${isNew?"إضافة المستخدم":"حفظ"}</button>${isNew||locked?"":delBtn("u",String(idx))}</div></div>`;
+  <div class="mut">اضغط على الخدمة لفتحها. المدير يرى كل شيء بغض النظر عن هذه الخيارات.</div>
+  <div style="display:flex;flex-direction:column;gap:6px">${access||'<span class="mut">لا توجد خدمات بعد.</span>'}</div>
+  <div class="bar"><button class="pri" data-a="${isNew?"uadd":"usave"}">${isNew?"إضافة المستخدم":"حفظ"}</button>${isNew||locked?"":delBtn("u",u.email)}<button data-a="uback">إلغاء</button></div></div>`;
+}
+function accessText(u){
+  if(u.role==="admin")return "مدير: كل شيء";
+  const full=u.full||[],cs=u.classes||[],parts=[];
+  svcList().forEach(x=>{
+    if(full.includes(x.id))parts.push(x.name+" (كل الفصول)");
+    else{const n=classesOf(x.id).filter(c=>cs.includes(ckey(x.id,c.id))).map(c=>c.name);if(n.length)parts.push(x.name+": "+n.join("، "))}
+  });
+  return parts.join(" — ")||"لا توجد خدمات";
+}
+function editUserView(){
+  const isNew=ui.uedit==="new";
+  const base=isNew?{screens:{rec:true,rep:true},full:[],classes:[],active:true,role:"user",name:"",email:""}:(S.users[ui.uedit]||{email:ui.uedit});
+  const u=(ui.ef&&ui.efFor===ui.uedit)?{...base,...ui.ef}:base;
+  return `<div class="bar"><button data-a="uback">رجوع</button><h2>${isNew?"مستخدم جديد":"تعديل مستخدم"}</h2></div><div class="card">${userForm(u,"f",isNew)}</div>`;
 }
 function usrView(){
+  if(ui.uedit)return editUserView();
+  if(ui.usub==="import")return `<div class="bar"><button data-a="uback">رجوع للمستخدمين</button></div>`+impView();
   const list=Object.values(S.users).sort((a,b)=>(a.name||a.email).localeCompare(b.name||b.email,"ar"));
-  ui._ulist=list;
+  const q=(ui.q||"").trim().toLowerCase();
   const base=location.origin+location.pathname.replace(/index\.html$/,"");
-  return `<div class="card"><h2>رابط التطبيق</h2><div class="mut">أرسل هذا الرابط للمستخدمين. بعد إضافة بريد المستخدم هنا يدخل به بحساب Google.</div><code class="ltr">${esc(base)}</code></div>
-  ${impView()}
-  <div class="card"><h2>إضافة مستخدم</h2>${userForm({screens:{rec:true,rep:true},full:[],classes:[],active:true},"new",true)}</div>
-  <div class="card"><h2>المستخدمون (${list.length})</h2>${list.length?list.map((u,i)=>userForm(u,i,false)).join(""):'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>`;
+  return `<div class="card"><div class="bar"><input type="search" id="uq" value="${esc(ui.q)}" placeholder="بحث بالاسم أو البريد" aria-label="بحث" style="flex:1;min-width:0"><button class="pri" data-a="unew">+ مستخدم</button></div>
+  <div class="bar"><button data-a="uimp">استيراد من إكسيل</button><span class="mut">${list.length} مستخدم</span></div>
+  ${list.map(u=>{const nm=(u.name||"")+" "+u.email;return `<button class="urow" data-a="uedit" data-email="${esc(u.email)}" data-nm="${esc(nm)}"${q&&!nm.toLowerCase().includes(q)?" hidden":""}><span><b>${esc(u.name||u.email)}</b>${u.role==="admin"?' <span class="badge">مدير</span>':""}${u.active===false?' <span class="badge">موقوف</span>':""}</span><span class="em">${esc(u.email)}</span><span class="mut">${esc(accessText(u))}</span></button>`}).join("")||'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>
+  <div class="card"><h2>رابط التطبيق</h2><div class="mut">أرسل هذا الرابط للمستخدمين. بعد إضافة بريد المستخدم يدخل به بحساب Google.</div><code class="ltr">${esc(base)}</code></div>`;
 }
 function accView(){
   let acc;
@@ -426,6 +460,7 @@ function mainView(){
     ${S.err?`<div class="warn">${esc(S.err)}</div>`:""}${body}</div>`;
 }
 function render(){
+  if(ui.uedit&&$app.querySelector('[data-uf="f"][data-f="name"]')){try{ui.ef=readUserForm("f");ui.efFor=ui.uedit}catch(e){}}
   const keepSc=$app.querySelector(".sc"),sl=keepSc?keepSc.scrollLeft:0,st=keepSc?keepSc.scrollTop:0,wy=window.scrollY;
   let html;
   if(!configured)html=setupView();
@@ -439,7 +474,7 @@ function render(){
   const sc=$app.querySelector(".sc");if(sc&&lastTab===ui.tab){sc.scrollLeft=sl;sc.scrollTop=st}
   window.scrollTo(0,wy);lastTab=ui.tab;
 }
-function softRender(){const a=document.activeElement;if(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"||a.tagName==="SELECT")&&a.closest("#app"))return;render()}
+function softRender(){const a=document.activeElement;if(ui.tab==="usr"&&ui.uedit)return;if(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"||a.tagName==="SELECT")&&a.closest("#app"))return;render()}
 
 /* ============================ Excel ============================ */
 const NAVY="FF1F3864",BORDER={style:"thin",color:{argb:"FF999999"}};
@@ -646,15 +681,19 @@ $app.addEventListener("click",async e=>{
     const paths=[...servants(id).map(s=>spath(c.sid,id,s.id)),...Object.values(S.weeks).filter(w=>w.cid===id).map(w=>wpath(c.sid,id,w.date)),cpath(c.sid,id)];
     FB.delMany(paths).catch(failMsg)}}
   else if(a==="vx"){ui.del=null;if(cl)FB.del(spath(cl.sid,cl.id,id)).catch(failMsg)}
-  else if(a==="ux"){const u=(ui._ulist||[])[+id];ui.del=null;if(u&&u.email!==ADMIN)FB.del("users/"+u.email).catch(failMsg)}
+  else if(a==="ux"){ui.del=null;if(id&&id!==ADMIN)FB.del("users/"+id).catch(failMsg);ui.uedit=null;ui.ef=null;flash("تم حذف المستخدم");return}
+  else if(a==="unew"){ui.uedit="new";ui.ef=null}
+  else if(a==="uedit"){ui.uedit=b.dataset.email;ui.ef=null}
+  else if(a==="uback"){ui.uedit=null;ui.usub="list";ui.ef=null}
+  else if(a==="uimp"){ui.usub="import"}
+  else if(a==="ssub"){ui.srvSub=b.dataset.v}
   else if(a==="uadd"||a==="usave"){
-    const idx=a==="uadd"?"new":b.dataset.idx,f=readUserForm(idx);
-    let email=f.email;if(a==="usave"){const u=(ui._ulist||[])[+idx];email=u&&u.email}
+    const f=readUserForm("f");
+    const email=a==="uadd"?f.email:ui.uedit;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email||"")){flash("اكتب بريداً إلكترونياً صحيحاً");return}
     if(email===ADMIN){f.role="admin";f.active=true}
-    FB.set("users/"+email,{email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services,full:f.full,classes:f.classes}).then(()=>flash(a==="uadd"?"تمت إضافة المستخدم":"تم الحفظ")).catch(failMsg);
-    if(a==="uadd")render();
-    return;
+    FB.set("users/"+email,{email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services,full:f.full,classes:f.classes}).catch(failMsg);
+    const wasNew=a==="uadd";ui.uedit=null;ui.ef=null;flash(wasNew?"تمت إضافة المستخدم":"تم الحفظ");return;
   }
   else if(a==="impprev"){ui.impText=($app.querySelector("#imptxt")||{}).value||ui.impText;ui.imp=analyzeImport(ui.impText)}
   else if(a==="imptpl"){try{await impTemplate()}catch(x){flash("تعذر إنشاء القالب: "+((x&&x.message)||"خطأ"))}return}
@@ -681,7 +720,15 @@ $app.addEventListener("change",e=>{
   else return;
   render();
 });
-$app.addEventListener("input",e=>{if(e.target.id==="imptxt")ui.impText=e.target.value});
+$app.addEventListener("input",e=>{
+  const t=e.target;
+  if(t.id==="imptxt")ui.impText=t.value;
+  else if(t.id==="sq"||t.id==="uq"){
+    ui[t.id==="sq"?"sq":"q"]=t.value;const q=t.value.trim().toLowerCase();
+    $app.querySelectorAll("[data-nm]").forEach(r=>{r.hidden=!!q&&!r.dataset.nm.toLowerCase().includes(q)});
+  }
+});
+$app.addEventListener("toggle",e=>{const sid=e.target&&e.target.dataset&&e.target.dataset.sid;if(sid)ui.openS[sid]=e.target.open},true);
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredInstall=e;paint()});
 window.addEventListener("appinstalled",()=>{deferredInstall=null;paint()});
 window.addEventListener("online",()=>{S.online=true;paint()});
