@@ -38,6 +38,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);
 .hd{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .hd h1{font:600 24px/1.2 var(--font-display);margin:0;color:var(--accent)}
 .hd select{flex:1;min-width:140px}
+.chb{font-size:14px;padding:4px 10px;min-height:34px;border:1px solid var(--line);border-radius:999px}
 .tabs{display:flex;gap:6px;overflow-x:auto}
 .tabs button{flex:1 0 auto;white-space:nowrap}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -147,8 +148,8 @@ const configured=!placeholder(CFG.apiKey)&&!placeholder(CFG.projectId)&&!placeho
 
 /* ============================ state ============================ */
 /* الهرم: خدمة (svc) ← فصل (cls) ← خادم (srv). سجلات المتابعة (weeks) تخص الفصل. */
-const S={user:null,authReady:false,me:undefined,svc:{},cls:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine};
-const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:"",uedit:null,usub:"list",ef:null,efFor:null,q:"",sq:"",pick:null,bulk:null,note:null,srvSub:"struct",openS:{}};
+const S={user:null,authReady:false,me:undefined,svc:{},cls:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine,churches:{},mship:null,chLoaded:false,autoDone:false};
+const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:"",uedit:null,usub:"list",ef:null,efFor:null,q:"",sq:"",pick:null,bulk:null,note:null,srvSub:"struct",openS:{},ch:null,chEdit:null,mig:null};
 try{ui.sid=localStorage.getItem("servants_fb_sid");ui.cid=localStorage.getItem("servants_fb_cid")}catch(e){}
 const store=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
 const subs={};
@@ -175,7 +176,11 @@ const getWeek=(cid,date)=>S.weeks[cid+"|"+date]||{cells:{},why:{},notes:{},exc:{
 const isExcuse=(i,s)=>ITEMS[i].sym[s]==="عذر";
 const isExcused=(cid,date,vid)=>{const w=S.weeks[cid+"|"+date];return !!(w&&w.exc&&w.exc[vid]!=null)};
 const getState=(cid,date,vid,i)=>{const w=S.weeks[cid+"|"+date];if(!w)return 0;if(ITEMS[i].exc&&w.exc&&w.exc[vid]!=null)return 3;return(w.cells&&w.cells[cellKey(vid,i)])||0};
-const cpath=(sid,cid)=>"services/"+sid+"/classes/"+cid;
+const P=p=>"churches/"+ui.ch+"/"+p;            /* كل بيانات الكنيسة تحت churches/{id}/ */
+const cpath=(sid,cid)=>P("services/"+sid+"/classes/"+cid);
+const canSwitch=()=>isOwner()||!!(S.mship&&S.mship.length>1);
+const chList=()=>Object.values(S.churches).sort((a,b)=>(a.order||0)-(b.order||0));
+const curChurch=()=>S.churches[ui.ch]||null;
 const wpath=(sid,cid,d)=>cpath(sid,cid)+"/weeks/"+d;
 const spath=(sid,cid,vid)=>cpath(sid,cid)+"/servants/"+vid;
 
@@ -231,19 +236,19 @@ function reconcile(){
   const add=(k,fn)=>{want.add(k);if(!subs[k])subs[k]=fn()};
   if(!admin)Object.values(S.cls).forEach(c=>{if(!clsAllowed(c))dropClass(c.id)});
   if(admin){
-    add("svcs",()=>FB.watchCol("services",(list,m)=>{
+    add("svcs",()=>FB.watchCol(P("services"),(list,m)=>{
       setPend("svcs",m);const seen={};
       list.forEach(d=>{seen[d.id]=1;S.svc[d.id]={id:d.id,name:d.name||"",order:d.order||0}});
       Object.keys(S.svc).forEach(id=>{if(!seen[id])dropService(id)});
       S.err="";reconcile();paint();
     },dbErr));
-    add("users",()=>FB.watchCol("users",(list,m)=>{setPend("users",m);S.users={};list.forEach(d=>S.users[d.id]=d);paint()},dbErr));
+    add("users",()=>FB.watchCol(P("members"),(list,m)=>{setPend("users",m);S.users={};list.forEach(d=>S.users[d.id]=d);paint()},dbErr));
   }
   for(const sid of (admin?Object.keys(S.svc):mSvcs())){
-    if(!admin)add("svc:"+sid,()=>FB.watchDoc("services/"+sid,(d,m)=>{setPend("svc:"+sid,m);if(d)S.svc[sid]={id:sid,name:d.name||"",order:d.order||0};else dropService(sid);S.err="";paint()},dbErr));
+    if(!admin)add("svc:"+sid,()=>FB.watchDoc(P("services/"+sid),(d,m)=>{setPend("svc:"+sid,m);if(d)S.svc[sid]={id:sid,name:d.name||"",order:d.order||0};else dropService(sid);S.err="";paint()},dbErr));
     const upsert=(cid,d)=>{S.cls[cid]={id:cid,sid,name:d.name||"",order:d.order||0}};
     if(admin||mFull().includes(sid)){
-      add("cls:"+sid,()=>FB.watchCol("services/"+sid+"/classes",(list,m)=>{
+      add("cls:"+sid,()=>FB.watchCol(P("services/"+sid+"/classes"),(list,m)=>{
         setPend("cls:"+sid,m);const seen={};
         list.forEach(d=>{seen[d.id]=1;upsert(d.id,d)});
         Object.values(S.cls).filter(c=>c.sid===sid&&!seen[c.id]).forEach(c=>dropClass(c.id));
@@ -272,7 +277,7 @@ function reconcile(){
     },dbErr));
   }
   for(const k of Object.keys(subs)){
-    if(want.has(k))continue;
+    if(want.has(k)||k.startsWith("g:"))continue;
     subs[k]();delete subs[k];delete S.pend[k];
     const p=k.split(":");
     if(p[0]==="srv")for(const x in S.srv)if(S.srv[x].cid===p[1])delete S.srv[x];
@@ -280,16 +285,42 @@ function reconcile(){
     if(p[0]==="svc")dropService(p[1]);
   }
 }
-function startSession(){
-  unsubAll();S.me=undefined;S.svc={};S.cls={};S.srv={};S.weeks={};S.users={};S.err="";S.pend={};
-  subs.me=FB.watchDoc("users/"+S.user.email,(d,m)=>{
+const resetChurchData=()=>{S.me=undefined;S.svc={};S.cls={};S.srv={};S.weeks={};S.users={};S.pend={};S.err=""};
+function unsubChurch(){for(const k of Object.keys(subs)){if(k.startsWith("g:"))continue;try{subs[k]()}catch(e){}delete subs[k]}}
+function autoEnter(){
+  if(ui.ch||S.autoDone)return;
+  if(isOwner()){if(S.chLoaded)S.autoDone=true;return}      /* المالك يرى شاشة الاختيار دائماً */
+  if(S.mship===null)return;
+  S.autoDone=true;
+  if(S.mship.length===1)enterChurch(S.mship[0]);          /* كنيسة واحدة فقط: ندخلها مباشرة */
+}
+function enterChurch(id){
+  unsubChurch();resetChurchData();ui.ch=id;ui.tab="";ui.sid=null;ui.cid=null;ui.uedit=null;ui.usub="list";ui.pick=null;ui.note=null;ui.bulk=null;ui.chEdit=null;ui.mig=null;S.bootstrapped=false;
+  subs.me=FB.watchDoc(P("members/"+S.user.email),(d,m)=>{
     setPend("me",m);const first=S.me===undefined;S.me=d;
     if(!d&&isOwner()&&first&&!S.bootstrapped){
       S.bootstrapped=true;
-      FB.set("users/"+S.user.email,{editor:true,email:S.user.email,name:S.user.name||"المدير",role:"admin",active:true,screens:{rec:true,rep:true,srv:true},services:[],full:[],classes:[]}).catch(dbErr);
+      FB.set(P("members/"+S.user.email),{editor:true,email:S.user.email,name:S.user.name||"المدير",role:"admin",active:true,screens:{rec:true,rep:true,srv:true},services:[],full:[],classes:[]}).catch(dbErr);
     }
     S.err="";reconcile();paint();
   },dbErr);
+  render();
+}
+function leaveChurch(){unsubChurch();resetChurchData();ui.ch=null;S.autoDone=true;render()}
+function startSession(){
+  unsubAll();resetChurchData();S.churches={};S.mship=null;S.chLoaded=false;S.autoDone=false;ui.ch=null;
+  const setCh=(id,d)=>{if(d)S.churches[id]={id,name:d.name||"",code:d.code||"",order:d.order||0};else delete S.churches[id]};
+  if(isOwner()){
+    subs["g:ch"]=FB.watchCol("churches",list=>{S.churches={};list.forEach(d=>setCh(d.id,d));S.chLoaded=true;S.err="";autoEnter();paint()},dbErr);
+  }else{
+    subs["g:ms"]=FB.watchCol("memberships/"+S.user.email+"/churches",list=>{
+      const ids=list.map(d=>d.id);S.mship=ids;
+      ids.forEach(id=>{if(!subs["g:c:"+id])subs["g:c:"+id]=FB.watchDoc("churches/"+id,d=>{setCh(id,d);paint()},dbErr)});
+      Object.keys(subs).filter(k=>k.startsWith("g:c:")&&!ids.includes(k.slice(4))).forEach(k=>{subs[k]();delete subs[k];delete S.churches[k.slice(4)]});
+      if(ui.ch&&!ids.includes(ui.ch))leaveChurch();
+      S.err="";autoEnter();paint();
+    },dbErr);
+  }
 }
 function paint(){clearTimeout(paintT);paintT=setTimeout(softRender,30)}
 
@@ -308,6 +339,26 @@ function setupView(){
   <div class="mut">لم تُدخل بعد إعدادات Firebase. افتح الملف <b>firebase-config.js</b> في مستودع GitHub، واستبدل كل القيم المكتوب بها <b>PASTE</b> بقيمك، ثم احفظ (Commit) وأعد فتح التطبيق مرتين. خطوات الحصول على القيم في ملف الدليل.</div>
   ${!window.FB?'<div class="warn">ملف firebase-bundle.js غير محمّل. تأكد من رفعه مع باقي الملفات.</div>':""}</div>`,true);
 }
+function churchView(){
+  const own=isOwner(),l=chList(),loaded=own?S.chLoaded:S.mship!==null;
+  let h=`<div class="wrap narrow"><div class="hd"><h1>اختر الكنيسة</h1></div>${ui.msg?`<div class="msg" role="status">${esc(ui.msg)}</div>`:""}${S.err?`<div class="warn">${esc(S.err)}</div>`:""}`;
+  if(!loaded)h+='<div class="card empty">جارٍ التحميل...</div>';
+  else if(!l.length&&!(!own&&S.mship&&S.mship.length))h+=`<div class="card empty">${own?"لا توجد كنائس بعد. أضف أول كنيسة من الأسفل.":"بريدك غير مرتبط بأي كنيسة بعد. أرسله لمدير الكنيسة ليضيفك."}<code class="ltr">${esc(S.user.email)}</code></div>`;
+  else if(!own&&!l.length)h+='<div class="card empty">جارٍ التحميل...</div>';
+  else h+=l.map(c=>`<div class="card"><button class="pri big" data-a="chgo" data-id="${c.id}">${esc(c.name)} <span class="ltr">(${esc(c.code)})</span></button>
+    ${own?`<div class="bar"><button data-a="chedit" data-id="${c.id}">تعديل الاسم والكود</button><button data-a="chmig" data-id="${c.id}">نقل بيانات النظام القديم إليها</button></div>
+    ${ui.chEdit===c.id?`<div class="bar"><input id="chen" value="${esc(c.name)}" placeholder="اسم الكنيسة" aria-label="اسم الكنيسة"><input id="chec" class="ltr" value="${esc(c.code)}" placeholder="الكود" aria-label="كود الكنيسة" maxlength="12"><button class="pri" data-a="chsv" data-id="${c.id}">حفظ</button></div>`:""}
+    ${ui.mig&&ui.mig.id===c.id?migBox():""}`:""}</div>`).join("");
+  if(own&&loaded)h+=`<div class="card"><h2>كنيسة جديدة (تكويد الكنائس)</h2><div class="mut">الكود حروف إنجليزية أو أرقام (حتى 12)، ولا يتكرر.</div>
+    <div class="bar"><input id="chn" value="${esc(ui.chn||"")}" placeholder="اسم الكنيسة" aria-label="اسم الكنيسة"><input id="chc" class="ltr" value="${esc(ui.chc||"")}" placeholder="الكود مثل MRK" aria-label="كود الكنيسة" maxlength="12"><button class="pri" data-a="chadd">إضافة</button></div></div>`;
+  h+=`<div class="card"><div><b>${esc((S.user&&S.user.name)||"")}</b></div><code class="ltr">${esc(S.user.email)}</code><div><button class="dng" data-a="logout">تسجيل الخروج</button></div></div>${installCard()}</div>`;
+  return h;
+}
+function migBox(){
+  const m=ui.mig;
+  if(m.step==="confirm")return `<div class="warn">سيتم نسخ المستخدمين والخدمات والفصول والخدام والمتابعات من النظام القديم (قبل الكنائس) إلى هذه الكنيسة. لا يُحذف شيء من القديم، ويمكن تكرار العملية بأمان.</div><div class="bar"><button class="pri" data-a="chmok">ابدأ النقل</button><button data-a="chmx">إلغاء</button></div>`;
+  return `<div class="msg">${esc(m.text||"")}</div>${m.busy?"":'<div class="bar"><button data-a="chmx">إغلاق</button></div>'}`;
+}
 function loginView(){
   return simple(`<div class="card"><h2>تسجيل الدخول</h2>
   <div class="mut">ادخل بحساب Google المسجَّل لدى أمين الخدمة. إذا لم يكن بريدك مسجلاً فسيظهر لك ذلك بعد الدخول.</div>
@@ -316,9 +367,9 @@ function loginView(){
   <button class="pri big" data-a="login"${ui.busy?" disabled":""}>${ui.busy?"جارٍ الدخول...":"تسجيل الدخول بحساب Google"}</button></div>${installCard()}`,true);
 }
 function blockedView(kind){
-  const t=kind==="off"?"تم إيقاف حسابك":"بريدك غير مسجَّل بعد";
+  const t=kind==="off"?"تم إيقاف حسابك في هذه الكنيسة":"بريدك غير مسجَّل في هذه الكنيسة";
   const d=kind==="off"?"أوقف أمين الخدمة هذا الحساب. تواصل معه إذا كان ذلك بالخطأ.":"سجّلت الدخول، لكن هذا البريد غير مضاف إلى المستخدمين. أرسل البريد التالي لأمين الخدمة ليضيفه، ثم أعد فتح التطبيق.";
-  return simple(`<div class="card"><h2>${t}</h2><div class="mut">${d}</div><code class="ltr">${esc(S.user.email)}</code><div><button data-a="logout">تسجيل الخروج</button></div></div>`,true);
+  return simple(`<div class="card"><h2>${t}</h2><div class="mut">${d}</div><code class="ltr">${esc(S.user.email)}</code><div class="bar">${canSwitch()?'<button data-a="chsw">اختيار كنيسة أخرى</button>':""}<button data-a="logout">تسجيل الخروج</button></div></div>`,true);
 }
 function installCard(){
   if(isStandalone())return "";
@@ -473,6 +524,8 @@ function accView(){
   return `<div class="card"><h2>حسابي</h2>
   <div><b>${esc((S.me&&S.me.name)||S.user.name||"")}</b></div><code class="ltr">${esc(S.user.email)}</code>
   <div class="mut">${esc(acc)}</div>
+  ${curChurch()?`<div class="mut">الكنيسة: <b>${esc(curChurch().name)}</b></div>`:""}
+  ${canSwitch()?'<div><button data-a="chsw">اختيار كنيسة أخرى</button></div>':""}
   <div><button class="dng" data-a="logout">تسجيل الخروج</button></div></div>${installCard()}`;
 }
 function mainView(){
@@ -481,7 +534,8 @@ function mainView(){
   const l=svcList(),v=cur(),cl=curCls(),cls=v?classesOf(v.id):[],ci=chipInfo();
   let body;
   if(ui.tab==="rec")body=recView(v,cl);else if(ui.tab==="rep")body=repView(v,cl);else if(ui.tab==="srv")body=srvView(v,cl);else if(ui.tab==="usr")body=usrView();else body=accView();
-  return `<div class="wrap"><div class="hd"><h1>متابعة الخدام</h1>
+  const chc=curChurch();
+  return `<div class="wrap"><div class="hd"><h1>متابعة الخدام</h1>${chc?(canSwitch()?`<button data-a="chsw" class="chb" aria-label="تغيير الكنيسة">⛪ ${esc(chc.name)}</button>`:`<span class="chb">⛪ ${esc(chc.name)}</span>`):""}
     ${l.length?`<select id="sv" aria-label="الخدمة">${l.map(x=>`<option value="${x.id}"${v&&x.id===v.id?" selected":""}>${esc(x.name)}</option>`).join("")}</select>`:'<span class="sp"></span>'}
     ${cls.length?`<select id="cl" aria-label="الفصل">${cls.map(x=>`<option value="${x.id}"${cl&&x.id===cl.id?" selected":""}>${esc(x.name)}</option>`).join("")}</select>`:""}
     <span class="chip ${ci.c}" id="chip">${ci.t}</span></div>
@@ -523,6 +577,7 @@ function render(){
   if(!configured)html=setupView();
   else if(!S.authReady)html=simple('<div class="card empty">جارٍ التحميل...</div>',true);
   else if(!S.user)html=loginView();
+  else if(!ui.ch)html=churchView();
   else if(S.me===undefined&&!isOwner())html=simple('<div class="card empty">جارٍ تحميل بياناتك...</div>',true);
   else if(!isOwner()&&!S.me)html=blockedView("none");
   else if(!isOwner()&&S.me.active===false)html=blockedView("off");
@@ -715,6 +770,35 @@ function readUserForm(idx){
   const eml=q("email");
   return{editor:!!(q("editor")&&q("editor").checked),email:eml?eml.value.trim().toLowerCase():"",name:q("name").value.trim(),role:q("admin").checked?"admin":"user",active:q("active").checked,screens,full,classes,services};
 }
+/* المستخدم يُسجَّل في الكنيسة الحالية (members) مع فهرس يعرّفه بكنائسه (memberships) */
+function saveMember(email,data){
+  FB.set(P("members/"+email),data)
+    .then(()=>{if(email!==ADMIN)return FB.set("memberships/"+email+"/churches/"+ui.ch,{ch:ui.ch})})
+    .catch(failMsg);
+}
+function once(path){return new Promise((res,rej)=>{let un=null,done=false;
+  const fin=()=>setTimeout(()=>{try{un&&un()}catch(e){}},0);
+  un=FB.watchCol(path,(list,m)=>{if(done||(m&&m.cache))return;done=true;fin();res(list)},e=>{if(!done){done=true;fin();rej(e)}});
+  setTimeout(()=>{if(!done){done=true;fin();rej(new Error("انتهت المهلة، تأكد من الاتصال"))}},25000)})}
+const noId=d=>{const o={...d};delete o.id;return o};
+async function migrateLegacy(chId){
+  const m=ui.mig={id:chId,step:"run",busy:true,text:"جارٍ النقل..."},base="churches/"+chId+"/",c={u:0,s:0,c:0,v:0,w:0};
+  const say=t=>{m.text=t;paint()};
+  try{
+    for(const u of await once("users")){await FB.set(base+"members/"+u.id,noId(u));if(u.id!==ADMIN)await FB.set("memberships/"+u.id+"/churches/"+chId,{ch:chId});c.u++;say("المستخدمون: "+c.u)}
+    for(const sv of await once("services")){
+      await FB.set(base+"services/"+sv.id,noId(sv));c.s++;
+      for(const cl of await once("services/"+sv.id+"/classes")){
+        const cp="services/"+sv.id+"/classes/"+cl.id;await FB.set(base+cp,noId(cl));c.c++;
+        for(const v of await once(cp+"/servants")){await FB.set(base+cp+"/servants/"+v.id,noId(v));c.v++}
+        for(const w of await once(cp+"/weeks")){await FB.set(base+cp+"/weeks/"+w.id,noId(w));c.w++}
+        say(`جارٍ النقل... خدمات ${c.s} / فصول ${c.c} / خدام ${c.v} / سجلات ${c.w}`);
+      }
+    }
+    m.busy=false;m.text=`تم النقل: ${c.u} مستخدم، ${c.s} خدمة، ${c.c} فصل، ${c.v} خادم، ${c.w} سجل متابعة.`;
+  }catch(e){m.busy=false;m.text="توقف النقل: "+((e&&(e.code||e.message))||"خطأ")+". يمكنك إعادة المحاولة بأمان."}
+  paint();
+}
 $app.addEventListener("click",async e=>{
   const b=e.target.closest("[data-a]");if(!b||b.tagName==="INPUT"||b.tagName==="SELECT")return;
   const a=b.dataset.a,id=b.dataset.id,v=cur(),cl=curCls();
@@ -722,6 +806,21 @@ $app.addEventListener("click",async e=>{
   if(a==="logout"){
     if(Object.values(S.pend).some(Boolean)){flash("توجد تعديلات لم تُرفع بعد. اتصل بالإنترنت وانتظر ثم أعد المحاولة");return}
     try{await FB.signOutAndClear()}catch(x){}location.reload();return}
+  if(a==="chgo"){enterChurch(id);return}
+  if(a==="chsw"){if(Object.values(S.pend).some(Boolean)){flash("توجد تعديلات لم تُرفع بعد. انتظر ثم أعد المحاولة");return}leaveChurch();return}
+  if(a==="chadd"||a==="chsv"){
+    if(!isOwner())return;
+    const adding=a==="chadd",name=($app.querySelector(adding?"#chn":"#chen")||{}).value.trim(),code=(($app.querySelector(adding?"#chc":"#chec")||{}).value||"").trim().toUpperCase();
+    if(!name){flash("اكتب اسم الكنيسة");return}
+    if(!/^[A-Z0-9_-]{1,12}$/.test(code)){flash("الكود حروف إنجليزية أو أرقام فقط (حتى 12)");return}
+    if(chList().some(c=>c.code===code&&c.id!==(adding?"":id))){flash("هذا الكود مستخدم لكنيسة أخرى");return}
+    if(adding){FB.set("churches/"+uid(),{name,code,order:Date.now()}).catch(failMsg);ui.chn="";ui.chc="";flash("تمت إضافة الكنيسة")}
+    else{FB.set("churches/"+id,{name,code},true).catch(failMsg);ui.chEdit=null;flash("تم الحفظ")}
+    return}
+  if(a==="chedit"){ui.chEdit=ui.chEdit===id?null:id;ui.mig=null;render();return}
+  if(a==="chmig"){ui.mig={id,step:"confirm"};ui.chEdit=null;render();return}
+  if(a==="chmx"){ui.mig=null;render();return}
+  if(a==="chmok"){if(!isOwner()||!ui.mig||ui.mig.busy)return;migrateLegacy(ui.mig.id);return}
   if(a==="tab"){ui.tab=b.dataset.t;ui.del=null}
   else if(a==="d"){ui.date=+b.dataset.n?addDays(ui.date,+b.dataset.n):fridayOnOrBefore(today)}
   else if(a==="c"){if(!cl)return;const s=b.dataset.s,i=+b.dataset.i,cv=getState(cl.id,ui.date,s,i);
@@ -761,7 +860,7 @@ $app.addEventListener("click",async e=>{
   else if(a==="xl"){try{const r=await buildReport(v,cl);await saveFile(r.blob,r.name)}catch(x){flash("تعذر إنشاء الملف: "+((x&&x.message)||"خطأ"))}return}
   else if(a==="sel"){ui.sid=id;store("servants_fb_sid",id)}
   else if(a==="csel"){ui.cid=id;store("servants_fb_cid",id)}
-  else if(a==="as"){const n=$app.querySelector("#ns").value.trim();if(!n)return;const sid=uid();ui.sid=sid;store("servants_fb_sid",sid);FB.set("services/"+sid,{name:n,order:Date.now()}).catch(failMsg);S.svc[sid]={id:sid,name:n,order:Date.now()}}
+  else if(a==="as"){const n=$app.querySelector("#ns").value.trim();if(!n)return;const sid=uid();ui.sid=sid;store("servants_fb_sid",sid);FB.set(P("services/"+sid),{name:n,order:Date.now()}).catch(failMsg);S.svc[sid]={id:sid,name:n,order:Date.now()}}
   else if(a==="ac"){const n=$app.querySelector("#nc").value.trim();if(!n||!v)return;const cid=uid();ui.cid=cid;store("servants_fb_cid",cid);FB.set(cpath(v.id,cid),{name:n,order:Date.now()}).catch(failMsg);S.cls[cid]={id:cid,sid:v.id,name:n,order:Date.now()}}
   else if(a==="av"){if(!cl)return;const l=$app.querySelector("#nv").value.split("\n").map(x=>x.trim()).filter(Boolean);if(!l.length)return;l.forEach((n,i)=>FB.set(spath(cl.sid,cl.id,uid()),{name:n,order:Date.now()+i,cid:cl.id}).catch(failMsg));$app.querySelector("#nv").value=""}
   else if(a==="sd"||a==="cd"||a==="vd"||a==="ud"){ui.del=a[0]+id}
@@ -772,13 +871,13 @@ $app.addEventListener("click",async e=>{
       servants(c.id).forEach(s=>paths.push(spath(id,c.id,s.id)));
       Object.values(S.weeks).filter(w=>w.cid===c.id).forEach(w=>paths.push(wpath(id,c.id,w.date)));
       paths.push(cpath(id,c.id))});
-    paths.push("services/"+id);
+    paths.push(P("services/"+id));
     FB.delMany(paths).catch(failMsg)}
   else if(a==="cx"){ui.del=null;const c=S.cls[id];if(c){
     const paths=[...servants(id).map(s=>spath(c.sid,id,s.id)),...Object.values(S.weeks).filter(w=>w.cid===id).map(w=>wpath(c.sid,id,w.date)),cpath(c.sid,id)];
     FB.delMany(paths).catch(failMsg)}}
   else if(a==="vx"){ui.del=null;if(cl)FB.del(spath(cl.sid,cl.id,id)).catch(failMsg)}
-  else if(a==="ux"){ui.del=null;if(id&&id!==ADMIN)FB.del("users/"+id).catch(failMsg);ui.uedit=null;ui.ef=null;flash("تم حذف المستخدم");return}
+  else if(a==="ux"){ui.del=null;if(id&&id!==ADMIN){FB.del(P("members/"+id)).then(()=>FB.del("memberships/"+id+"/churches/"+ui.ch)).catch(failMsg)}ui.uedit=null;ui.ef=null;flash("تم حذف المستخدم");return}
   else if(a==="unew"){ui.uedit="new";ui.ef=null}
   else if(a==="uedit"){ui.uedit=b.dataset.email;ui.ef=null}
   else if(a==="uback"){ui.uedit=null;ui.usub="list";ui.ef=null}
@@ -789,14 +888,14 @@ $app.addEventListener("click",async e=>{
     const email=a==="uadd"?f.email:ui.uedit;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email||"")){flash("اكتب بريداً إلكترونياً صحيحاً");return}
     if(email===ADMIN){f.role="admin";f.active=true}
-    FB.set("users/"+email,{editor:!!f.editor,email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services,full:f.full,classes:f.classes}).catch(failMsg);
+    saveMember(email,{editor:!!f.editor,email,name:f.name,role:f.role,active:f.active,screens:f.screens,services:f.services,full:f.full,classes:f.classes});
     const wasNew=a==="uadd";ui.uedit=null;ui.ef=null;flash(wasNew?"تمت إضافة المستخدم":"تم الحفظ");return;
   }
   else if(a==="impprev"){ui.impText=($app.querySelector("#imptxt")||{}).value||ui.impText;ui.imp=analyzeImport(ui.impText)}
   else if(a==="imptpl"){try{await impTemplate()}catch(x){flash("تعذر إنشاء القالب: "+((x&&x.message)||"خطأ"))}return}
   else if(a==="impgo"){
     const good=(ui.imp||[]).filter(r=>r.status!=="err");
-    good.forEach(o=>{const old=S.users[o.email];FB.set("users/"+o.email,{editor:old?old.editor===true:false,email:o.email,name:o.name,role:o.role,active:old?old.active!==false:true,screens:o.screens,services:o.services,full:o.full,classes:o.classes}).catch(failMsg)});
+    good.forEach(o=>{const old=S.users[o.email];saveMember(o.email,{editor:old?old.editor===true:false,email:o.email,name:o.name,role:o.role,active:old?old.active!==false:true,screens:o.screens,services:o.services,full:o.full,classes:o.classes})});
     ui.imp=null;ui.impText="";flash("تم استيراد "+good.length+" مستخدم");return}
   else if(a==="inst"){if(deferredInstall){deferredInstall.prompt();try{await deferredInstall.userChoice}catch(x){}deferredInstall=null}}
   render();
@@ -811,7 +910,7 @@ $app.addEventListener("change",e=>{
   else if(t.id==="dt"){if(t.value)ui.date=t.value}
   else if(t.id==="per"){ui.per=t.value}else if(t.id==="scope"){ui.scope=t.value}
   else if(t.id==="mo"){if(t.value)ui.month=t.value}else if(t.id==="yr"){if(t.value)ui.year=String(t.value)}
-  else if(a==="sn"){const val=t.value.trim();if(val)FB.set("services/"+t.dataset.id,{name:val},true).catch(failMsg)}
+  else if(a==="sn"){const val=t.value.trim();if(val)FB.set(P("services/"+t.dataset.id),{name:val},true).catch(failMsg)}
   else if(a==="cn"){const val=t.value.trim(),c=S.cls[t.dataset.id];if(val&&c)FB.set(cpath(c.sid,c.id),{name:val},true).catch(failMsg)}
   else if(a==="vn"){const val=t.value.trim(),c=curCls();if(val&&c)FB.set(spath(c.sid,c.id,t.dataset.id),{name:val},true).catch(failMsg)}
   else return;
@@ -820,6 +919,7 @@ $app.addEventListener("change",e=>{
 $app.addEventListener("input",e=>{
   const t=e.target;
   if(t.id==="imptxt")ui.impText=t.value;
+  else if(t.id==="chn"||t.id==="chc")ui[t.id]=t.value
   else if(t.id==="why"){if(ui.pick)ui.pick.txt=t.value}
   else if(t.id==="nt"){if(ui.note)ui.note.txt=t.value}
   else if(t.id==="sq"||t.id==="uq"){
@@ -841,7 +941,7 @@ if(configured){
     FB.onAuth(u=>{
       S.authReady=true;S.user=u;S.bootstrapped=false;
       if(u&&u.verified===false){S.user=null;flash("بريد Google غير موثّق")}
-      if(S.user)startSession();else{unsubAll();S.me=undefined;S.svc={};S.cls={};S.srv={};S.weeks={};S.users={}}
+      if(S.user)startSession();else{unsubAll();resetChurchData();S.churches={};S.mship=null;ui.ch=null}
       render();
     });
   }catch(e){S.authReady=true;S.err="تعذر تهيئة Firebase: "+((e&&e.message)||"");render()}
