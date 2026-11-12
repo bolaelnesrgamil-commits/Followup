@@ -1,7 +1,7 @@
 /* Service worker: lets the app open offline.
    Large static files are cache-first; pages and config are network-first (fresh when online, cached when offline).
    Firebase / Google API traffic is never touched here. */
-const CACHE = "servants-v12";
+const CACHE = "servants-v13";
 const SHELL = ["./", "index.html", "firebase-config.js", "firebase-bundle.js", "exceljs.min.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 const STATIC = /(exceljs\.min\.js|firebase-bundle\.js|icon-\d+\.png)$/;
 const FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];

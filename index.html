@@ -429,7 +429,7 @@ function classRows(list,t){
 }
 function reportData(v,cl){
   const t=testFn();
-  if(ui.scope==="all"){
+  if(ui.scope==="all"||ui.scope==="church"){
     const rows=svcList().map(x=>{const cs=classesOf(x.id),st=cs.flatMap(c=>stats(c.id,t)),p=avg(st.map(y=>y.p));const r=[x.name,String(cs.length),String(st.length),pc(p),rate(p)];r.p=p;return r});
     return{head:["الخدمة","عدد الفصول","عدد الخدام","متوسط الالتزام","التقدير"],rc:4,rows};
   }
@@ -448,7 +448,7 @@ function reportData(v,cl){
 function repView(v,cl){
   const rd=reportData(v,cl);
   const per=`<select id="per" aria-label="الفترة"><option value="month"${ui.per==="month"?" selected":""}>شهر</option><option value="year"${ui.per==="year"?" selected":""}>سنة</option><option value="all"${ui.per==="all"?" selected":""}>كل الفترة</option></select>`+(ui.per==="month"?`<input type="month" id="mo" value="${ui.month}">`:ui.per==="year"?`<input type="number" id="yr" value="${ui.year}" style="width:96px">`:"");
-  return `<div class="card"><div class="bar"><select id="scope" aria-label="النطاق"><option value="one"${ui.scope==="one"?" selected":""}>الفصل الحالي</option><option value="svc"${ui.scope==="svc"?" selected":""}>كل فصول الخدمة</option><option value="all"${ui.scope==="all"?" selected":""}>مقارنة كل الخدمات</option></select>${per}</div>
+  return `<div class="card"><div class="bar"><select id="scope" aria-label="النطاق"><option value="one"${ui.scope==="one"?" selected":""}>الفصل الحالي</option><option value="svc"${ui.scope==="svc"?" selected":""}>كل فصول الخدمة</option><option value="all"${ui.scope==="all"?" selected":""}>مقارنة كل الخدمات</option><option value="church"${ui.scope==="church"?" selected":""}>تقرير الكنيسة كاملاً (ملف واحد)</option></select>${per}</div>
   <div class="bar"><button class="pri" data-a="xl">تحميل تقرير إكسيل</button></div>
   ${rd.rows.length?tbl(rd.head,rd.rows,rd.rc):'<div class="empty">لا توجد بيانات.</div>'}
   <div class="mut">النسبة = مجموع النقاط ÷ البنود المسجّلة بدون العذر. نقاط ✔ = 1، ✘ = 0، والإفتقاد: زيارة = 1، تليفون = ½، X = 0. التقدير: ممتاز 90% فأكثر، جيد جداً 75%، جيد 50%، وأقل من ذلك يحتاج إلى متابعة.</div></div>`;
@@ -614,7 +614,7 @@ function addSheet(wb,used,name,aoa,widths,o={}){
   ws.eachRow({includeEmpty:false},(row,n)=>{
     row.eachCell({includeEmpty:true},(c,ci)=>{
       const head=n===1;
-      c.font={name:"Arial",size:11,bold:head||(o.lastBold&&n===aoa.length),color:head?{argb:"FFFFFFFF"}:undefined};
+      c.font={name:"Arial",size:11,bold:!!(head||(o.lastBold&&n===aoa.length)||(o.boldRows&&o.boldRows.includes(n))),color:head?{argb:"FFFFFFFF"}:undefined};
       c.alignment={horizontal:ci===1&&!head?"right":"center",vertical:"middle",wrapText:true};
       c.border={top:BORDER,left:BORDER,bottom:BORDER,right:BORDER};
       if(head)c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
@@ -656,7 +656,28 @@ async function buildReport(v,cl){
   const per=ui.per==="all"?"all":periodLabel();
   const classCmp=(pairs,withSvc)=>[[...(withSvc?["الخدمة"]:[]),"الفصل","عدد الخدام","متوسط الالتزام","التقدير"],...pairs.map(pr=>{const st=stats(pr.c.id,t),p=avg(st.map(y=>y.p));return[...(withSvc?[pr.v.name]:[]),pr.c.name,st.length,p==null?"":p,rate(p)]})];
   let name;
-  if(ui.scope==="all"){
+  if(ui.scope==="church"){
+    /* ملف واحد للكنيسة: ملخص الخدمات + ورقة مجمّعة لكل خدمة (الفصول ثم الخدام) + تفاصيل أسبوعية بكل خادم */
+    const sl=svcList(),pairs=[],allSt=[];
+    sl.forEach(x=>classesOf(x.id).forEach(c=>pairs.push({v:x,c})));
+    const cmp=[["الخدمة","عدد الفصول","عدد الخدام","متوسط الالتزام","التقدير"]];
+    sl.forEach(x=>{const cs=classesOf(x.id),st=cs.flatMap(c=>stats(c.id,t));allSt.push(...st);const p=avg(st.map(y=>y.p));cmp.push([x.name,cs.length,st.length,p==null?"":p,rate(p)])});
+    {const p=avg(allSt.map(y=>y.p));cmp.push(["إجمالي الكنيسة",pairs.length,allSt.length,p==null?"":p,rate(p)])}
+    addSheet(wb,used,"ملخص الكنيسة",cmp,[26,13,13,17,18],{pct:[4],rate:5,lastBold:true});
+    sl.forEach(x=>{
+      const head=["الفصل",...REPORT_HEAD],rows=[head],bold=[],all=[];
+      classesOf(x.id).forEach(c=>{
+        const st=stats(c.id,t);all.push(...st);
+        st.forEach(o=>{const r=rowOf(o);r[10]=o.p==null?"":o.p;rows.push([c.name,...r])});
+        if(st.length){const r=totalRow(st);r[0]="إجمالي "+c.name;r[10]=r[10]==null?"":r[10];rows.push(["",...r]);bold.push(rows.length)}
+      });
+      if(all.length){const r=totalRow(all);r[0]="إجمالي الخدمة";r[10]=r[10]==null?"":r[10];rows.push(["",...r]);bold.push(rows.length)}
+      addSheet(wb,used,"خدمة - "+x.name,rows,[20,...SUMW],{pct:[12],rate:13,boldRows:bold});
+    });
+    addSheet(wb,used,"التفاصيل",detailAoa(pairs,t,true,true),detW(true,true),{paintFrom:detPaint(true,true),paintTo:detPaint(true,true)+NI});
+    const cc=curChurch();
+    name="servants-followup-church"+(cc&&cc.code?"-"+cc.code.toLowerCase():"")+"-"+per+".xlsx";
+  }else if(ui.scope==="all"){
     const sl=svcList(),pairs=[];sl.forEach(x=>classesOf(x.id).forEach(c=>pairs.push({v:x,c})));
     const cmp=[["الخدمة","عدد الفصول","عدد الخدام","متوسط الالتزام","التقدير"],...sl.map(x=>{const cs=classesOf(x.id),st=cs.flatMap(c=>stats(c.id,t)),p=avg(st.map(y=>y.p));return[x.name,cs.length,st.length,p==null?"":p,rate(p)]})];
     addSheet(wb,used,"مقارنة الخدمات",cmp,[26,13,13,17,18],{pct:[4],rate:5});
