@@ -148,7 +148,7 @@ const configured=!placeholder(CFG.apiKey)&&!placeholder(CFG.projectId)&&!placeho
 
 /* ============================ state ============================ */
 /* الهرم: خدمة (svc) ← فصل (cls) ← خادم (srv). سجلات المتابعة (weeks) تخص الفصل. */
-const S={user:null,authReady:false,me:undefined,svc:{},cls:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine,churches:{},mship:null,chLoaded:false,autoDone:false};
+const S={user:null,authReady:false,me:undefined,svc:{},cls:{},srv:{},weeks:{},users:{},err:"",pend:{},online:navigator.onLine,churches:{},dir:[],mship:null,chLoaded:false,autoDone:false,reqs:{},jreq:{},codesSynced:false};
 const ui={tab:"",sid:null,cid:null,date:fridayOnOrBefore(today),per:"month",month:today.slice(0,7),year:today.slice(0,4),scope:"one",del:null,msg:"",busy:false,imp:null,impText:"",uedit:null,usub:"list",ef:null,efFor:null,q:"",sq:"",pick:null,bulk:null,note:null,srvSub:"struct",openS:{},ch:null,chEdit:null,mig:null};
 try{ui.sid=localStorage.getItem("servants_fb_sid");ui.cid=localStorage.getItem("servants_fb_cid")}catch(e){}
 const store=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -170,7 +170,7 @@ const cur=()=>{const l=svcList();return l.find(x=>x.id===ui.sid)||l[0]||null};
 const classesOf=sid=>Object.values(S.cls).filter(c=>c.sid===sid&&clsAllowed(c)).sort((a,b)=>(a.order||0)-(b.order||0));
 const curCls=()=>{const v=cur();if(!v)return null;const l=classesOf(v.id);return l.find(c=>c.id===ui.cid)||l[0]||null};
 const servants=cid=>Object.values(S.srv).filter(x=>x.cid===cid).sort((a,b)=>(a.order||0)-(b.order||0));
-const tabsAllowed=()=>{const t=[];if(can("rec"))t.push(["rec","المتابعة"]);if(can("rep"))t.push(["rep","التقارير"]);if(can("srv"))t.push(["srv","الخدمات والخدام"]);if(isAdmin())t.push(["usr","المستخدمون"]);t.push(["acc","حسابي"]);return t};
+const tabsAllowed=()=>{const t=[];if(can("rec"))t.push(["rec","المتابعة"]);if(can("rep"))t.push(["rep","التقارير"]);if(can("srv"))t.push(["srv","الخدمات والخدام"]);if(isAdmin())t.push(["usr","المستخدمون"+(Object.keys(S.reqs).length?" ("+Object.keys(S.reqs).length+")":"")]);t.push(["acc","حسابي"]);return t};
 const cellKey=(vid,i)=>vid+"_"+i;
 const getWeek=(cid,date)=>S.weeks[cid+"|"+date]||{cells:{},why:{},notes:{},exc:{}};
 const isExcuse=(i,s)=>ITEMS[i].sym[s]==="عذر";
@@ -242,6 +242,7 @@ function reconcile(){
       Object.keys(S.svc).forEach(id=>{if(!seen[id])dropService(id)});
       S.err="";reconcile();paint();
     },dbErr));
+    add("reqs",()=>FB.watchCol(P("requests"),(list,m)=>{S.reqs={};list.forEach(d=>S.reqs[d.id]=d);paint()},dbErr));
     add("users",()=>FB.watchCol(P("members"),(list,m)=>{setPend("users",m);S.users={};list.forEach(d=>S.users[d.id]=d);paint()},dbErr));
   }
   for(const sid of (admin?Object.keys(S.svc):mSvcs())){
@@ -285,7 +286,7 @@ function reconcile(){
     if(p[0]==="svc")dropService(p[1]);
   }
 }
-const resetChurchData=()=>{S.me=undefined;S.svc={};S.cls={};S.srv={};S.weeks={};S.users={};S.pend={};S.err=""};
+const resetChurchData=()=>{S.reqs={};S.me=undefined;S.svc={};S.cls={};S.srv={};S.weeks={};S.users={};S.pend={};S.err=""};
 function unsubChurch(){for(const k of Object.keys(subs)){if(k.startsWith("g:"))continue;try{subs[k]()}catch(e){}delete subs[k]}}
 function autoEnter(){
   if(ui.ch||S.autoDone)return;
@@ -308,11 +309,15 @@ function enterChurch(id){
 }
 function leaveChurch(){unsubChurch();resetChurchData();ui.ch=null;S.autoDone=true;render()}
 function startSession(){
-  unsubAll();resetChurchData();S.churches={};S.mship=null;S.chLoaded=false;S.autoDone=false;ui.ch=null;
+  unsubAll();resetChurchData();S.churches={};S.mship=null;S.chLoaded=false;S.autoDone=false;S.jreq={};S.codesSynced=false;ui.ch=null;
   const setCh=(id,d)=>{if(d)S.churches[id]={id,name:d.name||"",code:d.code||"",order:d.order||0};else delete S.churches[id]};
   if(isOwner()){
-    subs["g:ch"]=FB.watchCol("churches",list=>{S.churches={};list.forEach(d=>setCh(d.id,d));S.chLoaded=true;S.err="";autoEnter();paint()},dbErr);
+    subs["g:ch"]=FB.watchCol("churches",list=>{S.churches={};list.forEach(d=>setCh(d.id,d));S.chLoaded=true;S.err="";
+      if(!S.codesSynced){S.codesSynced=true;list.forEach(d=>{if(d.code)FB.set("churchCodes/"+d.code,{ch:d.id,name:d.name||""}).catch(()=>{})})}
+      autoEnter();paint()},dbErr);
   }else{
+    subs["g:jr"]=FB.watchCol("joinRequests/"+S.user.email+"/churches",list=>{S.jreq={};list.forEach(d=>S.jreq[d.id]=d);paint()},dbErr);
+    subs["g:dir"]=FB.watchCol("churchCodes",list=>{S.dir=list.map(d=>({ch:d.ch,name:d.name||"",code:d.id}));paint()},()=>{});
     subs["g:ms"]=FB.watchCol("memberships/"+S.user.email+"/churches",list=>{
       const ids=list.map(d=>d.id);S.mship=ids;
       ids.forEach(id=>{if(!subs["g:c:"+id])subs["g:c:"+id]=FB.watchDoc("churches/"+id,d=>{setCh(id,d);paint()},dbErr)});
@@ -343,12 +348,20 @@ function churchView(){
   const own=isOwner(),l=chList(),loaded=own?S.chLoaded:S.mship!==null;
   let h=`<div class="wrap narrow"><div class="hd"><h1>اختر الكنيسة</h1></div>${ui.msg?`<div class="msg" role="status">${esc(ui.msg)}</div>`:""}${S.err?`<div class="warn">${esc(S.err)}</div>`:""}`;
   if(!loaded)h+='<div class="card empty">جارٍ التحميل...</div>';
-  else if(!l.length&&!(!own&&S.mship&&S.mship.length))h+=`<div class="card empty">${own?"لا توجد كنائس بعد. أضف أول كنيسة من الأسفل.":"بريدك غير مرتبط بأي كنيسة بعد. أرسله لمدير الكنيسة ليضيفك."}<code class="ltr">${esc(S.user.email)}</code></div>`;
+  else if(!l.length&&!(!own&&S.mship&&S.mship.length))h+=`<div class="card empty">${own?"لا توجد كنائس بعد. أضف أول كنيسة من الأسفل.":"أنت غير مسجَّل في أي كنيسة بعد. أرسل طلب انضمام بكود الكنيسة من الأسفل."}<code class="ltr">${esc(S.user.email)}</code></div>`;
   else if(!own&&!l.length)h+='<div class="card empty">جارٍ التحميل...</div>';
   else h+=l.map(c=>`<div class="card"><button class="pri big" data-a="chgo" data-id="${c.id}">${esc(c.name)} <span class="ltr">(${esc(c.code)})</span></button>
     ${own?`<div class="bar"><button data-a="chedit" data-id="${c.id}">تعديل الاسم والكود</button><button data-a="chmig" data-id="${c.id}">نقل بيانات النظام القديم إليها</button></div>
     ${ui.chEdit===c.id?`<div class="bar"><input id="chen" value="${esc(c.name)}" placeholder="اسم الكنيسة" aria-label="اسم الكنيسة"><input id="chec" class="ltr" value="${esc(c.code)}" placeholder="الكود" aria-label="كود الكنيسة" maxlength="12"><button class="pri" data-a="chsv" data-id="${c.id}">حفظ</button></div>`:""}
     ${ui.mig&&ui.mig.id===c.id?migBox():""}`:""}</div>`).join("");
+  if(!own&&loaded){
+    const pend=Object.values(S.jreq).filter(r=>!(S.mship||[]).includes(r.id));
+    h+=pend.map(r=>`<div class="card"><b>${esc(r.chName||"كنيسة")}</b><div class="mut">طلبك بانتظار موافقة مدير الكنيسة. ستظهر هنا فور الموافقة.</div><div class="bar"><button data-a="jrc" data-id="${r.id}">إلغاء الطلب</button></div></div>`).join("");
+    const asked=new Set(pend.map(r=>r.id)),mine=new Set(S.mship||[]);
+    const avail=(S.dir||[]).filter(c=>!mine.has(c.ch)&&!asked.has(c.ch)).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
+    h+=`<div class="card"><h2>الانضمام إلى كنيسة</h2><div class="mut">اختر كنيستك، وسيصل طلبك (باسمك وبريدك) لمدير الكنيسة للموافقة عليه وتحديد صلاحياتك.</div>
+    ${avail.length?avail.map(c=>`<div class="row"><span style="flex:1;min-width:0"><b>${esc(c.name)}</b> <span class="ltr mut">(${esc(c.code)})</span></span><button class="pri" data-a="jrq" data-id="${c.ch}">طلب الانضمام</button></div>`).join(""):'<div class="mut">لا توجد كنائس متاحة للانضمام الآن.</div>'}</div>`;
+  }
   if(own&&loaded)h+=`<div class="card"><h2>كنيسة جديدة (تكويد الكنائس)</h2><div class="mut">الكود حروف إنجليزية أو أرقام (حتى 12)، ولا يتكرر.</div>
     <div class="bar"><input id="chn" value="${esc(ui.chn||"")}" placeholder="اسم الكنيسة" aria-label="اسم الكنيسة"><input id="chc" class="ltr" value="${esc(ui.chc||"")}" placeholder="الكود مثل MRK" aria-label="كود الكنيسة" maxlength="12"><button class="pri" data-a="chadd">إضافة</button></div></div>`;
   h+=`<div class="card"><div><b>${esc((S.user&&S.user.name)||"")}</b></div><code class="ltr">${esc(S.user.email)}</code><div><button class="dng" data-a="logout">تسجيل الخروج</button></div></div>${installCard()}</div>`;
@@ -507,7 +520,9 @@ function usrView(){
   const list=Object.values(S.users).sort((a,b)=>(a.name||a.email).localeCompare(b.name||b.email,"ar"));
   const q=(ui.q||"").trim().toLowerCase();
   const base=location.origin+location.pathname.replace(/index\.html$/,"");
-  return `<div class="card"><div class="bar"><input type="search" id="uq" value="${esc(ui.q)}" placeholder="بحث بالاسم أو البريد" aria-label="بحث" style="flex:1;min-width:0"><button class="pri" data-a="unew">+ مستخدم</button></div>
+  const rq=Object.values(S.reqs).sort((a,b)=>(a.at||0)-(b.at||0));
+  const rqH=rq.length?`<div class="card"><h2>طلبات الانضمام (${rq.length})</h2>${rq.map(r=>`<div class="row"><span style="flex:1;min-width:0"><b>${esc(r.name||r.email)}</b><br><code class="ltr">${esc(r.email)}</code></span><button class="pri" data-a="rqok" data-id="${esc(r.email)}">قبول</button><button class="dng" data-a="rqno" data-id="${esc(r.email)}">رفض</button></div>`).join("")}</div>`:"";
+  return rqH+`<div class="card"><div class="bar"><input type="search" id="uq" value="${esc(ui.q)}" placeholder="بحث بالاسم أو البريد" aria-label="بحث" style="flex:1;min-width:0"><button class="pri" data-a="unew">+ مستخدم</button></div>
   <div class="bar"><button data-a="uimp">استيراد من إكسيل</button><span class="mut">${list.length} مستخدم</span></div>
   ${list.map(u=>{const nm=(u.name||"")+" "+u.email;return `<button class="urow" data-a="uedit" data-email="${esc(u.email)}" data-nm="${esc(nm)}"${q&&!nm.toLowerCase().includes(q)?" hidden":""}><span><b>${esc(u.name||u.email)}</b>${u.role==="admin"?' <span class="badge">مدير</span>':""}${u.editor&&u.role!=="admin"?' <span class="badge">يعدّل</span>':""}${u.active===false?' <span class="badge">موقوف</span>':""}</span><span class="em">${esc(u.email)}</span><span class="mut">${esc(accessText(u))}</span></button>`}).join("")||'<div class="empty">لا يوجد مستخدمون بعد.</div>'}</div>
   <div class="card"><h2>رابط التطبيق</h2><div class="mut">أرسل هذا الرابط للمستخدمين. بعد إضافة بريد المستخدم يدخل به بحساب Google.</div><code class="ltr">${esc(base)}</code></div>`;
@@ -776,6 +791,10 @@ function saveMember(email,data){
     .then(()=>{if(email!==ADMIN)return FB.set("memberships/"+email+"/churches/"+ui.ch,{ch:ui.ch})})
     .catch(failMsg);
 }
+function onceDoc(path){return new Promise((res,rej)=>{let un=null,done=false;
+  const fin=()=>setTimeout(()=>{try{un&&un()}catch(e){}},0);
+  un=FB.watchDoc(path,(d,m)=>{if(done||(m&&m.cache&&!d))return;done=true;fin();res(d)},e=>{if(!done){done=true;fin();rej(e)}});
+  setTimeout(()=>{if(!done){done=true;fin();rej(new Error("انتهت المهلة، تأكد من الاتصال"))}},15000)})}
 function once(path){return new Promise((res,rej)=>{let un=null,done=false;
   const fin=()=>setTimeout(()=>{try{un&&un()}catch(e){}},0);
   un=FB.watchCol(path,(list,m)=>{if(done||(m&&m.cache))return;done=true;fin();res(list)},e=>{if(!done){done=true;fin();rej(e)}});
@@ -814,9 +833,27 @@ $app.addEventListener("click",async e=>{
     if(!name){flash("اكتب اسم الكنيسة");return}
     if(!/^[A-Z0-9_-]{1,12}$/.test(code)){flash("الكود حروف إنجليزية أو أرقام فقط (حتى 12)");return}
     if(chList().some(c=>c.code===code&&c.id!==(adding?"":id))){flash("هذا الكود مستخدم لكنيسة أخرى");return}
-    if(adding){FB.set("churches/"+uid(),{name,code,order:Date.now()}).catch(failMsg);ui.chn="";ui.chc="";flash("تمت إضافة الكنيسة")}
-    else{FB.set("churches/"+id,{name,code},true).catch(failMsg);ui.chEdit=null;flash("تم الحفظ")}
+    if(adding){const nid=uid();FB.set("churches/"+nid,{name,code,order:Date.now()}).then(()=>FB.set("churchCodes/"+code,{ch:nid,name})).catch(failMsg);ui.chn="";ui.chc="";flash("تمت إضافة الكنيسة")}
+    else{const old=S.churches[id];FB.set("churches/"+id,{name,code},true).then(()=>FB.set("churchCodes/"+code,{ch:id,name})).then(()=>{if(old&&old.code&&old.code!==code)return FB.del("churchCodes/"+old.code)}).catch(failMsg);ui.chEdit=null;flash("تم الحفظ")}
     return}
+  if(a==="jrq"){
+    const c=(S.dir||[]).find(x=>x.ch===id);
+    if(!c){flash("الكنيسة غير موجودة");return}
+    if((S.mship||[]).includes(c.ch)){flash("أنت مسجَّل في هذه الكنيسة بالفعل");return}
+    try{
+      const em=S.user.email;
+      await FB.set("churches/"+c.ch+"/requests/"+em,{email:em,name:S.user.name||"",at:Date.now()});
+      await FB.set("joinRequests/"+em+"/churches/"+c.ch,{ch:c.ch,chName:c.name||""});
+      flash("تم إرسال الطلب إلى مدير الكنيسة");
+    }catch(x){flash("تعذر إرسال الطلب: "+((x&&(x.code||x.message))||"خطأ"))}
+    return}
+  if(a==="jrc"){FB.del("churches/"+id+"/requests/"+S.user.email).then(()=>FB.del("joinRequests/"+S.user.email+"/churches/"+id)).catch(failMsg);return}
+  if(a==="rqok"){
+    const r=S.reqs[id];if(!r||!isAdmin())return;
+    saveMember(id,{editor:false,email:id,name:r.name||id,role:"user",active:true,screens:{rec:true,rep:true},services:[],full:[],classes:[]});
+    FB.del(P("requests/"+id)).then(()=>FB.del("joinRequests/"+id+"/churches/"+ui.ch)).catch(()=>{});
+    ui.uedit=id;ui.ef=null;flash("تمت الموافقة. حدّد الآن صلاحياته من الخدمات والفصول ثم احفظ");return}
+  if(a==="rqno"){if(!isAdmin())return;FB.del(P("requests/"+id)).then(()=>FB.del("joinRequests/"+id+"/churches/"+ui.ch)).catch(failMsg);flash("تم رفض الطلب");return}
   if(a==="chedit"){ui.chEdit=ui.chEdit===id?null:id;ui.mig=null;render();return}
   if(a==="chmig"){ui.mig={id,step:"confirm"};ui.chEdit=null;render();return}
   if(a==="chmx"){ui.mig=null;render();return}
@@ -919,7 +956,7 @@ $app.addEventListener("change",e=>{
 $app.addEventListener("input",e=>{
   const t=e.target;
   if(t.id==="imptxt")ui.impText=t.value;
-  else if(t.id==="chn"||t.id==="chc")ui[t.id]=t.value
+  else if(t.id==="chn"||t.id==="chc"||t.id==="jcode")ui[t.id]=t.value
   else if(t.id==="why"){if(ui.pick)ui.pick.txt=t.value}
   else if(t.id==="nt"){if(ui.note)ui.note.txt=t.value}
   else if(t.id==="sq"||t.id==="uq"){
