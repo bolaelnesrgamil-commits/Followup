@@ -483,7 +483,7 @@ function userForm(u,key,isNew){
   <h3>الخدمات والفصول المسموحة</h3>
   <div class="mut">اضغط على الخدمة لفتحها. المدير يرى كل شيء بغض النظر عن هذه الخيارات.</div>
   <div style="display:flex;flex-direction:column;gap:6px">${access||'<span class="mut">لا توجد خدمات بعد.</span>'}</div>
-  <div class="bar"><button class="pri" data-a="${isNew?"uadd":"usave"}">${isNew?"إضافة المستخدم":"حفظ"}</button>${isNew||locked?"":delBtn("u",u.email)}<button data-a="uback">إلغاء</button></div></div>`;
+  <div class="bar"><button class="pri" data-a="${isNew?"uadd":"usave"}">${isNew?"إضافة المستخدم":"حفظ"}</button>${isNew||locked?"":delBtn("u",ui.uedit)}<button data-a="uback">إلغاء</button></div></div>`;
 }
 function accessText(u){
   if(u.role==="admin")return "مدير: كل شيء";
